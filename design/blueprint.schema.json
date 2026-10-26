@@ -1,0 +1,5565 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:blueprint:1",
+  "title": "Coach Blueprint",
+  "description": "Blueprint, Step, Exception and decisions for the automation coach (contract v2 entities, camelCase). $defs also hold the rules-engine result shapes and the tool catalog entry. Fields marked x-derived are computed by the engine, are dropped from sync merges and are excluded from the content hash; x-runResult marks the host-written run results of tests (also excluded; x-hashes.contentHash.exclude lists every excluded path). Writers emit only the properties listed here; readers preserve unknown ones (contract v2 section 4).",
+  "type": "object",
+  "required": [
+    "id",
+    "schemaVersion",
+    "version",
+    "etag",
+    "title",
+    "owner",
+    "kind",
+    "status",
+    "sensitivity",
+    "stage",
+    "triage",
+    "process",
+    "steps",
+    "exceptions",
+    "decisions",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/blueprintId"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "description": "Schema revision '1.<minor>'. A reader preserves unknown properties of a newer minor; a newer major opens read-only.",
+      "pattern": "^1\\.[0-9]+$"
+    },
+    "version": {
+      "type": "integer",
+      "description": "Client edit counter: +1 per accepted local write. It is not the server revision (rev lives only in the sync envelope and sync).",
+      "minimum": 1
+    },
+    "etag": {
+      "type": "string",
+      "description": "Client-local content tag: base64url SHA-256 of the RFC 8785 canonical Blueprint without etag and sync. Not used for sync (If-Match carries rev).",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "owner": {
+      "type": "string",
+      "description": "User id of the owner.",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "orgId": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "kind": {
+      "enum": [
+        "new",
+        "rescue"
+      ],
+      "description": "new = designing an automation; rescue = diagnosing one that already exists (steps then carry asBuilt)."
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "in_review",
+        "approved",
+        "built",
+        "deployed",
+        "retired"
+      ]
+    },
+    "sensitivity": {
+      "$ref": "#/$defs/sensitivity"
+    },
+    "stage": {
+      "$ref": "#/$defs/stage"
+    },
+    "triage": {
+      "$ref": "#/$defs/triageBlock"
+    },
+    "process": {
+      "$ref": "#/$defs/processInfo"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step"
+      },
+      "maxItems": 200
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/exception"
+      },
+      "maxItems": 500
+    },
+    "environmentProfileRef": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/environmentProfileRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "roi": {
+      "$ref": "#/$defs/roiEstimate"
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/decision"
+      },
+      "maxItems": 2000
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/test"
+      },
+      "maxItems": 1000
+    },
+    "deployPlan": {
+      "$ref": "#/$defs/deployPlan"
+    },
+    "exports": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/exportRecord"
+      },
+      "maxItems": 500
+    },
+    "auditLog": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/auditEntry"
+      },
+      "maxItems": 20000
+    },
+    "engine": {
+      "$ref": "#/$defs/blueprintEngineMeta",
+      "x-derived": true,
+      "description": "Engine-owned, derived. Meta of the last whole-Blueprint run (computedAt, inputsHash, the host context it used). Sync drops it from merges and recomputes it; excluded from contentHash."
+    },
+    "reopen": {
+      "$ref": "#/$defs/reopen"
+    },
+    "sync": {
+      "$ref": "#/$defs/syncState"
+    },
+    "createdAt": {
+      "$ref": "#/$defs/isoDateTime"
+    },
+    "updatedAt": {
+      "$ref": "#/$defs/isoDateTime"
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "A reopened Blueprint (ruling R3) is a draft until every pending scope is confirmed; the host then removes reopen.",
+      "if": {
+        "required": [
+          "reopen"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "draft"
+          }
+        }
+      }
+    },
+    {
+      "description": "A Blueprint cannot be approved, built or deployed while a step is unconfirmed or has no recommendation, a verdict is missing, a step that needs a justification card (an llm_node or llm_agent recommendation or override, or a recommendation with cardRequired = true) has no confirmed card, or a step whose diagnostic triggers the attractor check (V-ATTR) has no attractorCheck. Before approval none of this is required, so a Blueprint saved mid-interview validates.",
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "approved",
+              "built",
+              "deployed"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "triage": {
+            "required": [
+              "verdict"
+            ],
+            "properties": {
+              "verdict": {
+                "type": "string"
+              }
+            }
+          },
+          "steps": {
+            "items": {
+              "required": [
+                "recommendation"
+              ],
+              "properties": {
+                "confirmationState": {
+                  "const": "confirmed"
+                }
+              },
+              "allOf": [
+                {
+                  "description": "A step that needs a justification card (CARD-3, rules-engine.md section 12.2) carries a confirmed one.",
+                  "if": {
+                    "anyOf": [
+                      {
+                        "properties": {
+                          "recommendation": {
+                            "properties": {
+                              "rungId": {
+                                "enum": [
+                                  "llm_node",
+                                  "llm_agent"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "rungId"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "recommendation"
+                        ]
+                      },
+                      {
+                        "properties": {
+                          "recommendation": {
+                            "properties": {
+                              "cardRequired": {
+                                "const": true
+                              }
+                            },
+                            "required": [
+                              "cardRequired"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "recommendation"
+                        ]
+                      },
+                      {
+                        "properties": {
+                          "override": {
+                            "properties": {
+                              "chosenRungId": {
+                                "enum": [
+                                  "llm_node",
+                                  "llm_agent"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "chosenRungId"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "override"
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "llmJustification"
+                    ],
+                    "properties": {
+                      "llmJustification": {
+                        "properties": {
+                          "cardState": {
+                            "const": "confirmed"
+                          }
+                        },
+                        "required": [
+                          "cardState"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "description": "A step whose diagnostic triggers V-ATTR carries the attractor check (rules-engine.md section 2.3).",
+                  "if": {
+                    "required": [
+                      "diagnostic"
+                    ],
+                    "properties": {
+                      "diagnostic": {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "outputDeterminism": {
+                                "enum": [
+                                  "mostly",
+                                  "no"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "outputDeterminism"
+                            ]
+                          },
+                          {
+                            "properties": {
+                              "languageUnderstanding": {
+                                "enum": [
+                                  "some",
+                                  "core"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "languageUnderstanding"
+                            ]
+                          },
+                          {
+                            "properties": {
+                              "judgmentRequired": {
+                                "enum": [
+                                  "sometimes",
+                                  "yes"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "judgmentRequired"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "diagnostic": {
+                        "required": [
+                          "attractorCheck"
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "patternProperties": {
+    "^x-": {}
+  },
+  "x-actions": [
+    "blueprint_created",
+    "blueprint_updated",
+    "blueprint_status_changed",
+    "stage_advanced",
+    "blueprint_imported",
+    "blueprint_share_received",
+    "blueprint_restored",
+    "confirmations_reset",
+    "sensitivity_tightened",
+    "sensitivity_changed",
+    "blueprint_backup_deleted",
+    "process_info_set",
+    "triage_answers_recorded",
+    "triage_computed",
+    "triage_overridden",
+    "step_added",
+    "step_updated",
+    "step_moved",
+    "step_removed",
+    "step_confirmed",
+    "exception_added",
+    "exception_updated",
+    "exception_removed",
+    "exception_confirmed",
+    "exception_hunt_completed",
+    "diagnostic_recorded",
+    "environment_recorded",
+    "recommendation_computed",
+    "recommendation_presented",
+    "design_confirmed",
+    "override_recorded",
+    "override_revoked",
+    "llm_justification_proposed",
+    "llm_justification_confirmed",
+    "org_rule_waived",
+    "test_added",
+    "test_updated",
+    "test_confirmed",
+    "test_run_recorded",
+    "test_waiver",
+    "deploy_plan_recorded",
+    "export_created",
+    "export_only_chosen",
+    "automate_draft_proposed",
+    "automate_draft_applied",
+    "attended_test_run_requested",
+    "approval_requested",
+    "approval_recorded",
+    "self_attested",
+    "sync_pushed",
+    "sync_merged",
+    "sync_conflict_resolved",
+    "policy_applied"
+  ],
+  "x-virtualFields": [
+    {
+      "path": "step.derived.domains[]",
+      "type": "array",
+      "items": "string",
+      "stored": false,
+      "description": "Data-domain ids that policy governance.dataDomains matches for the step. Computed by the policy layer from the step's name, description, inputs, outputs and systems; never stored in the Blueprint. The org-rule builder offers it next to the real properties."
+    }
+  ],
+  "x-hashes": {
+    "contentHash": {
+      "description": "SHA-256 (hex) of the RFC 8785 canonical JSON of the Blueprint with every path in exclude removed. It covers content only, so approval survives exports, merges, engine re-runs and test runs. Paths are relative to the Blueprint root; [] means every element of an array; the named property is removed from each object. Generated, not hand-written: the property list comes from the x-derived and x-runResult markers in this schema plus the fixed bookkeeping list. Sync-envelope field; not stored in the Blueprint.",
+      "exclude": [
+        "auditLog",
+        "status",
+        "updatedAt",
+        "version",
+        "sync",
+        "etag",
+        "exports",
+        "engine",
+        "roi",
+        "steps[].llmJustification.costPerRun",
+        "steps[].recommendation",
+        "tests[].lastRunAt",
+        "tests[].lastRunDetail",
+        "tests[].lastRunId",
+        "tests[].lastRunOutcome",
+        "triage.conditions",
+        "triage.engine",
+        "triage.rationale",
+        "triage.ruleTrace",
+        "triage.verdict",
+        "triage.warnings"
+      ]
+    },
+    "etag": "Client-local base64url SHA-256 of the RFC 8785 canonical Blueprint without etag and sync.",
+    "exportRecord.contentHash": "SHA-256 (hex) of the exported bytes.",
+    "engine.inputsHash": "SHA-256 (hex) of the canonical engine inputs. Step level (steps[].recommendation.engine): the step diagnostic without provenance, Step.environment, the effective sensitivity class, the EngineEnvironment, the catalog version and the rules-pack constants. Blueprint level (engine): the step hashes, the Blueprint-level facts the engine reads (sensitivity, triage answers, process facts), the pending reopen scopes and the host context {plan, billableSeats}.",
+    "traceHash": "SHA-256 (hex) of the canonical ruleTrace."
+  },
+  "$defs": {
+    "blueprintId": {
+      "type": "string",
+      "description": "Prefixed ULID (Crockford base32, upper case): bp_<26 chars>. Generated on the client; ULIDs sort by creation time and do not collide across devices.",
+      "pattern": "^bp_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "stepId": {
+      "type": "string",
+      "description": "Prefixed ULID (Crockford base32, upper case): stp_<26 chars>. Generated on the client; ULIDs sort by creation time and do not collide across devices.",
+      "pattern": "^stp_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "exceptionId": {
+      "type": "string",
+      "description": "Prefixed ULID (Crockford base32, upper case): exc_<26 chars>. Generated on the client; ULIDs sort by creation time and do not collide across devices.",
+      "pattern": "^exc_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "decisionId": {
+      "type": "string",
+      "description": "Prefixed ULID (Crockford base32, upper case): dec_<26 chars>. Generated on the client; ULIDs sort by creation time and do not collide across devices.",
+      "pattern": "^dec_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "testId": {
+      "type": "string",
+      "description": "Prefixed ULID (Crockford base32, upper case): tst_<26 chars>. Generated on the client; ULIDs sort by creation time and do not collide across devices.",
+      "pattern": "^tst_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "exportId": {
+      "type": "string",
+      "description": "Prefixed ULID (Crockford base32, upper case): exp_<26 chars>. Generated on the client; ULIDs sort by creation time and do not collide across devices.",
+      "pattern": "^exp_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "auditId": {
+      "type": "string",
+      "description": "Prefixed ULID (Crockford base32, upper case): aud_<26 chars>. Generated on the client; ULIDs sort by creation time and do not collide across devices.",
+      "pattern": "^aud_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "isoDateTime": {
+      "type": "string",
+      "description": "RFC 3339 UTC timestamp.",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "slug": {
+      "type": "string",
+      "description": "Lower-case slug. One definition shared with policy.schema.json (contract v2 section 4); no dots, because the dot is the toolId separator.",
+      "pattern": "^[a-z][a-z0-9_-]{1,62}$"
+    },
+    "toolId": {
+      "type": "string",
+      "description": "Tool id <namespace>.<name>: exactly one dot, a digit is allowed after the dot, no hyphen. One definition shared with policy.schema.json (contract v2 section 4).",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z0-9][a-z0-9_]*$",
+      "maxLength": 80
+    },
+    "orgToolId": {
+      "type": "string",
+      "description": "Org tool id (policy orgToolEntry.toolId, environment.customTools[]). A subset of toolId.",
+      "pattern": "^org\\.[a-z0-9][a-z0-9_]{0,59}$"
+    },
+    "connectionId": {
+      "type": "string",
+      "description": "Connection id; the built-in managed connection is 'managed'.",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "modelKey": {
+      "type": "string",
+      "description": "Namespaced model key <namespace>/<id>. managed and byok_openrouter use the OpenRouter id as is; byok_provider <providerId>/<id>; custom_openai_compat custom/<id> (deployment name for Azure); local local/<id>. One convention for Connection.allowedModels[], models.allowlist, prefs.preferredModel.modelId and auditDetails.modelKey (contract v2 section 4). Same pattern and maxLength as policy.schema.json and connection.schema.json.",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}/[A-Za-z0-9][A-Za-z0-9._:@+~/-]{0,127}$",
+      "maxLength": 200
+    },
+    "skillLevel": {
+      "enum": [
+        "none",
+        "basic",
+        "intermediate",
+        "advanced"
+      ],
+      "description": "The one skill scale (contract v2 section 4). UI labels are separate copy (basic is shown as Beginner)."
+    },
+    "rungId": {
+      "enum": [
+        "eliminate",
+        "builtin_feature",
+        "api_connector",
+        "script",
+        "ui_automation",
+        "parser_ocr_ml",
+        "llm_node",
+        "human_checkpoint",
+        "llm_agent"
+      ],
+      "description": "Tool ladder. Array order is the ladder order: the engine walks it from the top and the first rung that fits wins. human_checkpoint comes before llm_agent; llm_agent is discouraged and is reached only where a human checkpoint is forbidden or unfit."
+    },
+    "operationTag": {
+      "enum": [
+        "aggregate_group",
+        "answer_over_text",
+        "approve_decision",
+        "calculate",
+        "call_api",
+        "classify_text",
+        "event_trigger",
+        "exception_review",
+        "extract_entities_freetext",
+        "extract_fields_document",
+        "extract_fields_pattern",
+        "file_operations",
+        "filter_sort_dedupe",
+        "format_convert",
+        "generate_report",
+        "generate_text",
+        "judge_quality",
+        "lookup_join",
+        "ocr_text",
+        "physical_action",
+        "plan_open_ended",
+        "query_database",
+        "read_from_ui",
+        "rename_files",
+        "route_by_rule",
+        "route_message_by_header",
+        "schedule_trigger",
+        "scrape_web",
+        "send_message",
+        "summarize_text",
+        "sync_records",
+        "transfer_data",
+        "transform_text_pattern",
+        "translate_text",
+        "validate_rules",
+        "write_to_ui"
+      ],
+      "description": "What a step does to its data. Catalog capabilities[] use the same tags. wrapper tags (schedule_trigger, event_trigger) are resolved by a trigger companion, not by coverage."
+    },
+    "sensitivity": {
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "restricted"
+      ],
+      "description": "Data sensitivity class. The order is public < internal < confidential < restricted, weakest first (x-order); stricter means later in that order. The Coach model may only raise the class (ruling R4): a call that would keep or lower it is rejected with sensitivity_not_tightening, an accepted raise applies at once and is audited as sensitivity_tightened. Lowering is an owner panel action, audited as sensitivity_changed, subject to data.sensitivityRules. The engine reads the current class at once: a step is evaluated at the stricter of this class and its own dataSensitivity (rules-engine.md section 3.4).",
+      "x-order": [
+        "public",
+        "internal",
+        "confidential",
+        "restricted"
+      ]
+    },
+    "stage": {
+      "enum": [
+        "triage",
+        "capture",
+        "decompose",
+        "classify",
+        "environment_fit",
+        "design",
+        "build_handoff",
+        "test_plan",
+        "deploy_monitor"
+      ]
+    },
+    "triageVerdict": {
+      "enum": [
+        "automate",
+        "fix_process_first",
+        "dont_automate"
+      ]
+    },
+    "riskTier": {
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "description": "From costOfError x reversibility (rules-engine.md section 7)."
+    },
+    "sha256": {
+      "type": "string",
+      "description": "Lower-case hex SHA-256.",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "user_turn",
+            "pasted_document"
+          ]
+        },
+        "turnId": {
+          "type": "string",
+          "maxLength": 24
+        },
+        "docId": {
+          "type": "string",
+          "maxLength": 24
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 400
+        },
+        "at": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      },
+      "required": [
+        "source",
+        "turnId",
+        "quote"
+      ],
+      "description": "Where the user said it. The host verified quote is a verbatim substring of the cited turn (coach-tools.json).",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "pasted_document"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "required": [
+              "docId"
+            ]
+          }
+        }
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "origin": {
+          "enum": [
+            "user_stated",
+            "coach_inferred",
+            "engine_derived"
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        }
+      },
+      "required": [
+        "origin"
+      ],
+      "description": "Who supplied a value. user_stated = the user chose it on a host control or typed or edited it; it needs no evidence, because a click on a host-rendered control cannot be forged by the model (ruling S11). coach_inferred = the Coach extracted it from the user's free text, the user accepted it, and the verbatim quote is required in evidence. engine_derived = computed by the engine, no evidence. The engine reads the value, not the provenance (rules-engine.md section 2.1).",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "A value the model extracted from free text needs the verbatim quote (contract section 3, ruling S11). A control answer is user_stated and needs none.",
+          "if": {
+            "properties": {
+              "origin": {
+                "const": "coach_inferred"
+              }
+            },
+            "required": [
+              "origin"
+            ]
+          },
+          "then": {
+            "required": [
+              "evidence"
+            ]
+          }
+        }
+      ]
+    },
+    "attractorCheck": {
+      "type": "object",
+      "properties": {
+        "ruleAttempt": {
+          "type": "string",
+          "description": "The if/then rule that was tried.",
+          "minLength": 10,
+          "maxLength": 300
+        },
+        "whereItBreaks": {
+          "type": "string",
+          "description": "The user's example where the rule gives the wrong answer.",
+          "minLength": 10,
+          "maxLength": 300
+        }
+      },
+      "required": [
+        "ruleAttempt",
+        "whereItBreaks"
+      ],
+      "description": "Evidence gate: required before a step can leave the code family because of uncertainty or language need.",
+      "additionalProperties": false
+    },
+    "training": {
+      "type": "object",
+      "properties": {
+        "examples": {
+          "type": "integer",
+          "description": "Labeled examples the user can supply.",
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        "classCount": {
+          "type": "integer",
+          "description": "Number of labels.",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "labelSetStable": {
+          "type": "boolean",
+          "description": "The list of labels is fixed."
+        }
+      },
+      "required": [
+        "examples",
+        "labelSetStable"
+      ],
+      "additionalProperties": false
+    },
+    "diagnostic": {
+      "type": "object",
+      "properties": {
+        "inputStructure": {
+          "enum": [
+            "structured",
+            "semi_structured",
+            "free_text",
+            "unknown"
+          ]
+        },
+        "outputDeterminism": {
+          "enum": [
+            "yes",
+            "mostly",
+            "no",
+            "unknown"
+          ],
+          "description": "yes = same input always gives the same output by rules; mostly = a rule exists with exceptions; no = experts could differ."
+        },
+        "costOfError": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "unknown"
+          ]
+        },
+        "reversibility": {
+          "enum": [
+            "reversible",
+            "partly",
+            "irreversible",
+            "unknown"
+          ]
+        },
+        "frequency": {
+          "enum": [
+            "ad_hoc",
+            "daily",
+            "weekly",
+            "monthly",
+            "continuous",
+            "unknown"
+          ]
+        },
+        "volumePerRun": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "interfaceAvailability": {
+          "enum": [
+            "api_available",
+            "file_exchange",
+            "ui_only",
+            "unknown"
+          ],
+          "description": "For a step touching several systems, the weakest link; per-system detail lives in Step.environment.systems. There is no 'none' value: steps whose systems are all paper_or_phone are exempt (rules-engine.md section 2.1)."
+        },
+        "attendance": {
+          "enum": [
+            "attended",
+            "unattended",
+            "either",
+            "unknown"
+          ]
+        },
+        "credentialsRequired": {
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "dataSensitivity": {
+          "enum": [
+            "public",
+            "internal",
+            "confidential",
+            "restricted",
+            "unknown"
+          ]
+        },
+        "languageUnderstanding": {
+          "enum": [
+            "none",
+            "some",
+            "core",
+            "unknown"
+          ]
+        },
+        "judgmentRequired": {
+          "enum": [
+            "no",
+            "sometimes",
+            "yes",
+            "unknown"
+          ]
+        },
+        "attractorCheck": {
+          "$ref": "#/$defs/attractorCheck"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operationTag"
+          },
+          "description": "Engine extension: what the step does, in the order the user described it.",
+          "uniqueItems": true,
+          "maxItems": 12
+        },
+        "humanAuthority": {
+          "enum": [
+            "none",
+            "approval_required",
+            "accountable_decision"
+          ],
+          "description": "Engine extension: a named person must decide or approve (control, policy or the user's rule)."
+        },
+        "necessity": {
+          "enum": [
+            "required",
+            "output_unused",
+            "duplicate_of_step",
+            "available_upstream"
+          ],
+          "description": "Engine extension: input to the eliminate rung."
+        },
+        "requiredByControl": {
+          "type": "boolean",
+          "description": "Engine extension: an audit or compliance control needs the step; blocks elimination."
+        },
+        "residualHandling": {
+          "enum": [
+            "human_review",
+            "fallback_rule",
+            "llm"
+          ],
+          "description": "Engine extension: what happens to cases the rule cannot decide."
+        },
+        "inputVariability": {
+          "enum": [
+            "fixed_layout",
+            "few_templates",
+            "many_templates",
+            "unbounded",
+            "unknown"
+          ],
+          "description": "Engine extension: how many layouts the input comes in (documents and text)."
+        },
+        "pathPredictability": {
+          "enum": [
+            "fixed",
+            "branching_known",
+            "open_ended"
+          ],
+          "description": "Engine extension: whether the path can be written down in advance."
+        },
+        "inputSize": {
+          "enum": [
+            "small",
+            "medium",
+            "large"
+          ],
+          "description": "Engine extension: size of one input (a page, a contract, a book)."
+        },
+        "training": {
+          "$ref": "#/$defs/training"
+        },
+        "provenance": {
+          "type": "object",
+          "description": "Field name -> provenance of the value, written by the host. A closed-choice value the user clicked on a host control (show_control) is user_stated with no evidence (ruling S11); a number the Coach extracted from the user's words (volumePerRun, training) is coach_inferred with a verbatim quote.",
+          "propertyNames": {
+            "enum": [
+              "inputStructure",
+              "outputDeterminism",
+              "costOfError",
+              "reversibility",
+              "frequency",
+              "volumePerRun",
+              "interfaceAvailability",
+              "attendance",
+              "credentialsRequired",
+              "dataSensitivity",
+              "languageUnderstanding",
+              "judgmentRequired",
+              "operations",
+              "humanAuthority",
+              "necessity",
+              "requiredByControl",
+              "residualHandling",
+              "inputVariability",
+              "pathPredictability",
+              "inputSize",
+              "training",
+              "attractorCheck"
+            ]
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/provenance"
+          }
+        }
+      },
+      "description": "Inputs to the rules engine for one step. All fields optional while the step is being captured; the engine returns needs_info for what it needs, including the attractor check (V-ATTR) when outputDeterminism is mostly or no, languageUnderstanding is some or core, or judgmentRequired is sometimes or yes. The schema does not require attractorCheck here, so a diagnostic saved mid-interview, or one the engine answered needs_info for, validates; the root rule requires it once the Blueprint is approved, built or deployed. Every field except provenance is tool-settable (x-toolSettable): the 12 contract fields, attractorCheck and the nine engine fields. Closed-choice fields are written when the user clicks a host control (show_control); only volumePerRun and training come from a Coach chip (record_diagnostic_answers).",
+      "additionalProperties": false,
+      "x-toolSettable": [
+        "inputStructure",
+        "outputDeterminism",
+        "costOfError",
+        "reversibility",
+        "frequency",
+        "volumePerRun",
+        "interfaceAvailability",
+        "attendance",
+        "credentialsRequired",
+        "dataSensitivity",
+        "languageUnderstanding",
+        "judgmentRequired",
+        "attractorCheck",
+        "operations",
+        "humanAuthority",
+        "necessity",
+        "requiredByControl",
+        "residualHandling",
+        "inputVariability",
+        "pathPredictability",
+        "inputSize",
+        "training"
+      ]
+    },
+    "stepSystem": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "kind": {
+          "enum": [
+            "web_app",
+            "desktop_app",
+            "terminal_or_mainframe",
+            "spreadsheet_or_file",
+            "email_or_calendar",
+            "database",
+            "api_service",
+            "paper_or_phone",
+            "unknown"
+          ]
+        },
+        "role": {
+          "enum": [
+            "source",
+            "target",
+            "both",
+            "lookup"
+          ]
+        },
+        "accessModes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "builtin",
+              "connector",
+              "api",
+              "scriptable",
+              "file_or_db",
+              "http_html",
+              "ui",
+              "none"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "How the system can be reached. Omitted = derived from interfaceAvailability and kind."
+        },
+        "accessEvidence": {
+          "enum": [
+            "verified",
+            "claimed",
+            "unknown"
+          ],
+          "description": "Categorical, never a score: verified = checked by someone with access; claimed = the user said so. The host forces 'claimed' on model writes; only an inspection result may set 'verified'."
+        },
+        "uiLocator": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": [
+                "automation_id",
+                "name_or_control_type",
+                "dom_selector",
+                "image_or_coordinates",
+                "unknown"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "image_or_coordinates is accepted as an answer so the engine can reject it by name.",
+          "additionalProperties": false
+        },
+        "authModel": {
+          "enum": [
+            "sso",
+            "service_account",
+            "shared_login",
+            "mfa_interactive",
+            "none",
+            "unknown"
+          ]
+        },
+        "profileSystemId": {
+          "$ref": "#/$defs/slug"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "description": "One system a step touches. Tool-settable: role, accessModes, accessEvidence (host forces claimed on model writes), uiLocator.kind, authModel, profileSystemId. The name comes from a Coach chip (record_environment_facts); the other closed choices are answered on host controls (show_control).",
+      "additionalProperties": false
+    },
+    "stepEnvironment": {
+      "type": "object",
+      "properties": {
+        "systems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stepSystem"
+          },
+          "maxItems": 8,
+          "description": "Tool-settable: names from record_environment_facts chips, the rest from host controls (show_control)."
+        },
+        "builderSkill": {
+          "$ref": "#/$defs/skillLevel",
+          "description": "Tool-settable. Unset reads as basic, the same as the default of prefs.skillLevel. The engine never reads preferences; a host that wants the user's own level used writes it into the step."
+        },
+        "alreadyHasToolIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolId"
+          },
+          "uniqueItems": true,
+          "maxItems": 20
+        }
+      },
+      "description": "Facts from record_environment_facts (system names) and host controls (show_control: system choices, builder skill, tools already owned).",
+      "additionalProperties": false
+    },
+    "ruleTraceEntry": {
+      "type": "object",
+      "properties": {
+        "ruleId": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Predicate or rule id, for example RP-CODE, T-EXEC, ORG-<id>, S-COVER, TB."
+        },
+        "rungId": {
+          "$ref": "#/$defs/rungId"
+        },
+        "toolId": {
+          "$ref": "#/$defs/toolId"
+        },
+        "result": {
+          "enum": [
+            "pass",
+            "fail",
+            "partial",
+            "fire",
+            "selected",
+            "stop",
+            "info",
+            "condition",
+            "marginal-pass",
+            "advisory"
+          ]
+        },
+        "class": {
+          "enum": [
+            "inherent",
+            "environmental",
+            "capability",
+            "evidence",
+            "policy"
+          ]
+        },
+        "because": {
+          "type": "string",
+          "maxLength": 400
+        }
+      },
+      "required": [
+        "ruleId",
+        "result",
+        "because"
+      ],
+      "additionalProperties": false
+    },
+    "missingItem": {
+      "type": "object",
+      "properties": {
+        "questionId": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Stable id, for example diag.attendance or triage.ownerIdentified."
+        },
+        "field": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "kind": {
+          "enum": [
+            "missing",
+            "conflict"
+          ]
+        },
+        "ask": {
+          "type": "string",
+          "maxLength": 300
+        }
+      },
+      "required": [
+        "questionId",
+        "ask"
+      ],
+      "additionalProperties": false
+    },
+    "companion": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "enum": [
+            "trigger",
+            "review",
+            "approve",
+            "residual",
+            "org"
+          ]
+        },
+        "rungId": {
+          "$ref": "#/$defs/rungId"
+        },
+        "toolId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/toolId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ruleId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "why": {
+          "type": "string",
+          "maxLength": 300
+        }
+      },
+      "required": [
+        "role",
+        "rungId",
+        "ruleId",
+        "why"
+      ],
+      "additionalProperties": false
+    },
+    "hybrid": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "enum": [
+            "rules_first_llm_residual",
+            "rules_first_human_residual",
+            "llm_draft_human_review",
+            "ui_read_api_write",
+            "ml_human_exception"
+          ]
+        },
+        "spine": {
+          "type": "object",
+          "properties": {
+            "rungId": {
+              "$ref": "#/$defs/rungId"
+            },
+            "toolId": {
+              "$ref": "#/$defs/toolId"
+            }
+          },
+          "required": [
+            "rungId",
+            "toolId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "pattern"
+      ],
+      "description": "How a deterministic spine with edges is reported (rules-engine.md section 14).",
+      "additionalProperties": false
+    },
+    "proposedSplit": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operationTag"
+          },
+          "uniqueItems": true
+        },
+        "systemName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "role": {
+          "enum": [
+            "source",
+            "target",
+            "both",
+            "lookup"
+          ]
+        },
+        "decisionPoints": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 160
+          }
+        }
+      },
+      "required": [
+        "name",
+        "operations"
+      ],
+      "additionalProperties": false
+    },
+    "envDeltaEntry": {
+      "type": "object",
+      "properties": {
+        "rungId": {
+          "$ref": "#/$defs/rungId"
+        },
+        "toolId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/toolId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ideal": {
+          "type": "boolean"
+        },
+        "blockedBy": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ruleId": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "class": {
+                "enum": [
+                  "inherent",
+                  "environmental",
+                  "capability",
+                  "evidence",
+                  "policy"
+                ]
+              },
+              "change": {
+                "type": "string",
+                "maxLength": 400
+              }
+            },
+            "required": [
+              "ruleId",
+              "change"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "rungId",
+        "blockedBy"
+      ],
+      "description": "What blocks a tool here and what would have to change.",
+      "additionalProperties": false
+    },
+    "warning": {
+      "type": "object",
+      "properties": {
+        "ruleId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 400
+        }
+      },
+      "required": [
+        "ruleId",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "alternative": {
+      "type": "object",
+      "properties": {
+        "rungId": {
+          "$ref": "#/$defs/rungId"
+        },
+        "toolId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/toolId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "whyNot": {
+          "type": "string",
+          "maxLength": 400
+        }
+      },
+      "required": [
+        "rungId",
+        "whyNot"
+      ],
+      "additionalProperties": false
+    },
+    "rejectedRung": {
+      "type": "object",
+      "properties": {
+        "rungId": {
+          "$ref": "#/$defs/rungId"
+        },
+        "rule": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "whyNot": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "stage": {
+          "enum": [
+            "rung",
+            "tool"
+          ]
+        },
+        "toolId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/toolId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failedRules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          }
+        }
+      },
+      "required": [
+        "rungId",
+        "rule",
+        "whyNot"
+      ],
+      "additionalProperties": false
+    },
+    "engineMeta": {
+      "type": "object",
+      "properties": {
+        "rulesPackVersion": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "catalogVersion": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "policyVersion": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inputsHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "computedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      },
+      "required": [
+        "rulesPackVersion"
+      ],
+      "description": "Versions and a hash of the inputs the result was computed from. A different hash means stale.",
+      "additionalProperties": false
+    },
+    "engineContext": {
+      "type": "object",
+      "properties": {
+        "plan": {
+          "enum": [
+            "free",
+            "individual",
+            "team",
+            "enterprise"
+          ],
+          "description": "Entitlement plan, supplied by the host from the signed entitlement token; the engine never reads the token."
+        },
+        "billableSeats": {
+          "type": "integer",
+          "description": "Billable seats of the organization (Admin, CoE Reviewer or Builder; Viewers are free and not counted). Supplied by the host. Needed for plan team.",
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "plan"
+      ],
+      "description": "Host-supplied context for the approval gate (rules-engine.md section 12.4, rulings R2 and R7). It is an engine input, so it is part of Blueprint.engine.inputsHash; it is not part of any step's inputsHash and never reaches the Blueprint content.",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "plan": {
+                "const": "team"
+              }
+            },
+            "required": [
+              "plan"
+            ]
+          },
+          "then": {
+            "required": [
+              "billableSeats"
+            ]
+          }
+        }
+      ]
+    },
+    "blueprintEngineMeta": {
+      "type": "object",
+      "properties": {
+        "rulesPackVersion": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "catalogVersion": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "policyVersion": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inputsHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "computedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "context": {
+          "$ref": "#/$defs/engineContext"
+        }
+      },
+      "required": [
+        "rulesPackVersion"
+      ],
+      "description": "Meta of the last whole-Blueprint engine run: the step meta plus the host context the run used. inputsHash covers the step inputs, the Blueprint-level facts the engine reads, the pending reopen scopes and the context.",
+      "additionalProperties": false
+    },
+    "stepResult": {
+      "type": "object",
+      "properties": {
+        "stepId": {
+          "$ref": "#/$defs/stepId"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "needs_info",
+            "blocked_by_policy",
+            "not_confirmed"
+          ]
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "enum": [
+                "recommended",
+                "split_required",
+                "no_fit",
+                "eliminate"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rungId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/rungId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "toolId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/toolId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hostToolId": {
+          "$ref": "#/$defs/toolId"
+        },
+        "bundle": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolId"
+          },
+          "maxItems": 3
+        },
+        "companions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/companion"
+          }
+        },
+        "hybrid": {
+          "$ref": "#/$defs/hybrid"
+        },
+        "riskTier": {
+          "$ref": "#/$defs/riskTier"
+        },
+        "cardRequired": {
+          "type": "boolean"
+        },
+        "rationale": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/alternative"
+          }
+        },
+        "rejectedRungs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rejectedRung"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        },
+        "policyNotes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 400
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/missingItem"
+          }
+        },
+        "ruleTrace": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ruleTraceEntry"
+          }
+        },
+        "proposedSplit": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/proposedSplit"
+          }
+        },
+        "envDelta": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/envDeltaEntry"
+          }
+        },
+        "policyRelaxedFit": {
+          "type": "object",
+          "properties": {
+            "rungId": {
+              "$ref": "#/$defs/rungId"
+            },
+            "toolId": {
+              "$ref": "#/$defs/toolId"
+            }
+          },
+          "required": [
+            "rungId",
+            "toolId"
+          ],
+          "additionalProperties": false
+        },
+        "manualFallback": {
+          "type": "object",
+          "properties": {
+            "rungId": {
+              "const": "human_checkpoint"
+            },
+            "toolId": {
+              "$ref": "#/$defs/toolId"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "rungId",
+            "toolId"
+          ],
+          "additionalProperties": false
+        },
+        "engine": {
+          "$ref": "#/$defs/engineMeta"
+        }
+      },
+      "required": [
+        "stepId",
+        "status"
+      ],
+      "description": "Return value of the engine for one step (request_recommendation results[]).",
+      "additionalProperties": false
+    },
+    "recommendation": {
+      "type": "object",
+      "properties": {
+        "rungId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/rungId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "toolId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/toolId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/alternative"
+          }
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "needs_info",
+            "blocked_by_policy",
+            "not_confirmed"
+          ]
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "enum": [
+                "recommended",
+                "split_required",
+                "no_fit",
+                "eliminate"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hostToolId": {
+          "$ref": "#/$defs/toolId"
+        },
+        "bundle": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolId"
+          },
+          "maxItems": 3
+        },
+        "companions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/companion"
+          }
+        },
+        "hybrid": {
+          "$ref": "#/$defs/hybrid"
+        },
+        "riskTier": {
+          "$ref": "#/$defs/riskTier"
+        },
+        "cardRequired": {
+          "type": "boolean"
+        },
+        "rejectedRungs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rejectedRung"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        },
+        "policyNotes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 400
+          }
+        },
+        "proposedSplit": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/proposedSplit"
+          }
+        },
+        "envDelta": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/envDeltaEntry"
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/missingItem"
+          }
+        },
+        "ruleTrace": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ruleTraceEntry"
+          }
+        },
+        "engine": {
+          "$ref": "#/$defs/engineMeta"
+        },
+        "stale": {
+          "type": "boolean",
+          "description": "Set by the host when any input changed after computation; the engine recomputes it. Never merged between devices."
+        }
+      },
+      "required": [
+        "rungId",
+        "toolId",
+        "rationale",
+        "alternatives"
+      ],
+      "description": "Engine-owned, derived. Sync drops it from merges and recomputes it (architecture.md). Excluded from contentHash.",
+      "additionalProperties": false,
+      "x-derived": true
+    },
+    "override": {
+      "type": "object",
+      "properties": {
+        "by": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "User id of the person who chose."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 15,
+          "maxLength": 400
+        },
+        "at": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "decisionId": {
+          "$ref": "#/$defs/decisionId"
+        },
+        "chosenRungId": {
+          "$ref": "#/$defs/rungId"
+        },
+        "chosenToolId": {
+          "$ref": "#/$defs/toolId"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "incomplete",
+            "pending_approval",
+            "stale",
+            "revoked"
+          ],
+          "description": "A request that fails OV-1, OV-2, a hard tool predicate or coach.override.mode = forbidden fails without storing, so no failed state exists. A reviewer's rejection of a pending_approval override sets revoked."
+        }
+      },
+      "required": [
+        "by",
+        "reason",
+        "at",
+        "chosenRungId"
+      ],
+      "description": "Current effective override on the step. The full record is in decisions[] (kind=override). reason has a 15-character floor; chosenToolId is required unless the chosen rung is eliminate.",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "chosenToolId is required unless the chosen rung is eliminate.",
+          "if": {
+            "properties": {
+              "chosenRungId": {
+                "not": {
+                  "const": "eliminate"
+                }
+              }
+            },
+            "required": [
+              "chosenRungId"
+            ]
+          },
+          "then": {
+            "required": [
+              "chosenToolId"
+            ]
+          }
+        }
+      ]
+    },
+    "validator": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "schema_check",
+            "rule_check",
+            "lookup_check",
+            "human_review",
+            "sampling_audit",
+            "second_model_check"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 300
+        }
+      },
+      "required": [
+        "kind",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "fallback": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "human_checkpoint",
+            "retry_then_human",
+            "flag_and_skip",
+            "halt_run"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 300
+        }
+      },
+      "required": [
+        "kind",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "costPerRun": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "currency": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 3
+        },
+        "basis": {
+          "enum": [
+            "price_table",
+            "measured",
+            "unavailable"
+          ]
+        },
+        "priceTableVersion": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "tokensIn": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokensOut": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 300
+          }
+        }
+      },
+      "required": [
+        "value",
+        "basis"
+      ],
+      "description": "Computed by the engine from a price table supplied by the model catalog or gateway. The engine states no price from memory; basis=unavailable when no table is loaded.",
+      "additionalProperties": false
+    },
+    "diagnosticFieldName": {
+      "enum": [
+        "inputStructure",
+        "outputDeterminism",
+        "costOfError",
+        "reversibility",
+        "frequency",
+        "volumePerRun",
+        "interfaceAvailability",
+        "attendance",
+        "credentialsRequired",
+        "dataSensitivity",
+        "languageUnderstanding",
+        "judgmentRequired",
+        "operations",
+        "humanAuthority",
+        "necessity",
+        "requiredByControl",
+        "residualHandling",
+        "inputVariability",
+        "pathPredictability",
+        "inputSize",
+        "training"
+      ],
+      "description": "A diagnostic field a justification card may cite."
+    },
+    "llmJustification": {
+      "type": "object",
+      "properties": {
+        "whyNotCode": {
+          "type": "string",
+          "minLength": 30,
+          "maxLength": 600
+        },
+        "citedDiagnosticFields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diagnosticFieldName"
+          },
+          "minItems": 1,
+          "maxItems": 6,
+          "uniqueItems": true
+        },
+        "validator": {
+          "$ref": "#/$defs/validator"
+        },
+        "fallback": {
+          "$ref": "#/$defs/fallback"
+        },
+        "costPerRun": {
+          "$ref": "#/$defs/costPerRun",
+          "x-derived": true,
+          "description": "Engine-computed (ruling S2), recomputed whenever the price table or the model changes, dropped from sync merges and excluded from contentHash. The immutable snapshot is decisions[].costPerRun."
+        },
+        "provenance": {
+          "type": "object",
+          "description": "Provenance of the card text, keyed by field name like diagnostic.provenance. Only whyNotCode is ruled (R5): the host stores it after the user typed or edited the text, with origin user_stated. Without that provenance the engine counts whyNotCode as not provided (rules-engine.md CARD-6), the same as a missing one.",
+          "propertyNames": {
+            "enum": [
+              "whyNotCode"
+            ]
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/provenance"
+          }
+        },
+        "cardState": {
+          "enum": [
+            "proposed",
+            "confirmed",
+            "stale",
+            "rejected"
+          ]
+        },
+        "decisionId": {
+          "$ref": "#/$defs/decisionId"
+        }
+      },
+      "required": [
+        "whyNotCode",
+        "validator",
+        "fallback"
+      ],
+      "description": "Current card on the step. The full record is in decisions[] (kind=llm_justification). costPerRun is optional because the engine fills it on every write: it is x-derived (excluded from contentHash), so a card validates before the engine has priced it; whyNotCode counts as provided only with provenance.whyNotCode.origin = user_stated.",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "A confirmed card needs a whyNotCode the user wrote or edited (provenance.whyNotCode.origin = user_stated).",
+          "if": {
+            "properties": {
+              "cardState": {
+                "const": "confirmed"
+              }
+            },
+            "required": [
+              "cardState"
+            ]
+          },
+          "then": {
+            "required": [
+              "provenance"
+            ],
+            "properties": {
+              "provenance": {
+                "required": [
+                  "whyNotCode"
+                ],
+                "properties": {
+                  "whyNotCode": {
+                    "required": [
+                      "origin"
+                    ],
+                    "properties": {
+                      "origin": {
+                        "const": "user_stated"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ioItem": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "format": {
+          "type": "string",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "decisionPoint": {
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "minItems": 2,
+          "maxItems": 6
+        },
+        "ruleStatus": {
+          "enum": [
+            "explicit",
+            "partial",
+            "judgment",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "question",
+        "outcomes",
+        "ruleStatus"
+      ],
+      "additionalProperties": false
+    },
+    "asBuilt": {
+      "type": "object",
+      "properties": {
+        "toolName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "rungId": {
+          "$ref": "#/$defs/rungId"
+        },
+        "failureSymptom": {
+          "type": "string",
+          "maxLength": 300
+        }
+      },
+      "required": [
+        "toolName"
+      ],
+      "description": "Rescue flow only.",
+      "additionalProperties": false
+    },
+    "step": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "name": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "actor": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ioItem"
+          },
+          "maxItems": 10
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ioItem"
+          },
+          "maxItems": 10
+        },
+        "decisionPoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/decisionPoint"
+          },
+          "maxItems": 5
+        },
+        "exceptionRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/exceptionId"
+          },
+          "uniqueItems": true
+        },
+        "diagnostic": {
+          "$ref": "#/$defs/diagnostic"
+        },
+        "recommendation": {
+          "$ref": "#/$defs/recommendation"
+        },
+        "override": {
+          "$ref": "#/$defs/override"
+        },
+        "llmJustification": {
+          "$ref": "#/$defs/llmJustification"
+        },
+        "createdBy": {
+          "enum": [
+            "user",
+            "coach",
+            "engine"
+          ],
+          "description": "Who created the entity. Host-written."
+        },
+        "confirmationState": {
+          "enum": [
+            "proposed",
+            "confirmed"
+          ],
+          "description": "proposed = suggested by the Coach or the engine; confirmed = the user confirmed it in the UI (never by a model tool call)."
+        },
+        "confirmedBy": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "User id of the person who confirmed. Host-written. Absent while the entity is proposed: every return to proposed, including the reset of a reopened Blueprint (ruling R3), clears it."
+        },
+        "confirmedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "provenance": {
+          "$ref": "#/$defs/evidence"
+        },
+        "environment": {
+          "$ref": "#/$defs/stepEnvironment"
+        },
+        "asBuilt": {
+          "$ref": "#/$defs/asBuilt"
+        },
+        "exceptionsReviewed": {
+          "enum": [
+            "none_reported",
+            "recorded"
+          ]
+        },
+        "timePerRunMinutes": {
+          "type": "number",
+          "description": "Optional minutes per run for this step. Not used by the engine in v1: the ROI estimate weighs steps equally.",
+          "minimum": 0,
+          "maximum": 10080
+        },
+        "derivedFromStepId": {
+          "$ref": "#/$defs/stepId"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      },
+      "required": [
+        "id",
+        "order",
+        "name",
+        "actor",
+        "createdBy",
+        "confirmationState"
+      ],
+      "description": "One actor, one system, one action. Editing a confirmed step returns it to proposed and marks recommendation.stale. provenance is the Evidence for the step as a whole; per-field provenance lives in diagnostic.provenance.",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "confirmed needs confirmedBy and confirmedAt; proposed carries neither (a reset to proposed clears both).",
+          "if": {
+            "properties": {
+              "confirmationState": {
+                "const": "confirmed"
+              }
+            },
+            "required": [
+              "confirmationState"
+            ]
+          },
+          "then": {
+            "required": [
+              "confirmedBy",
+              "confirmedAt"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "confirmedBy"
+                  ]
+                },
+                {
+                  "required": [
+                    "confirmedAt"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "exception": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/exceptionId"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 300
+        },
+        "frequency": {
+          "enum": [
+            "rare",
+            "occasional",
+            "common",
+            "unknown"
+          ]
+        },
+        "frequencyNote": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "handling": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "stepIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stepId"
+          },
+          "uniqueItems": true,
+          "maxItems": 10
+        },
+        "createdBy": {
+          "enum": [
+            "user",
+            "coach",
+            "engine"
+          ],
+          "description": "Who created the entity. Host-written."
+        },
+        "confirmationState": {
+          "enum": [
+            "proposed",
+            "confirmed"
+          ],
+          "description": "proposed = suggested by the Coach or the engine; confirmed = the user confirmed it in the UI (never by a model tool call)."
+        },
+        "confirmedBy": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "User id of the person who confirmed. Host-written. Absent while the entity is proposed: every return to proposed, including the reset of a reopened Blueprint (ruling R3), clears it."
+        },
+        "confirmedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "provenance": {
+          "$ref": "#/$defs/evidence"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "frequency",
+        "createdBy",
+        "confirmationState"
+      ],
+      "description": "Something that goes wrong or differs. handling is the user's words; the Coach never invents it. Step.exceptionRefs is the authoritative link; stepIds is a denormalized back-reference the host keeps in sync.",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "confirmed needs confirmedBy and confirmedAt; proposed carries neither (a reset to proposed clears both).",
+          "if": {
+            "properties": {
+              "confirmationState": {
+                "const": "confirmed"
+              }
+            },
+            "required": [
+              "confirmationState"
+            ]
+          },
+          "then": {
+            "required": [
+              "confirmedBy",
+              "confirmedAt"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "confirmedBy"
+                  ]
+                },
+                {
+                  "required": [
+                    "confirmedAt"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "processInfo": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "trigger": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "frequency": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "period": {
+              "enum": [
+                "hour",
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year",
+                "ad_hoc"
+              ]
+            }
+          },
+          "required": [
+            "count",
+            "period"
+          ],
+          "additionalProperties": false
+        },
+        "volume": {
+          "type": "object",
+          "properties": {
+            "itemsPerRun": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "itemLabel": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          "required": [
+            "itemsPerRun"
+          ],
+          "additionalProperties": false
+        },
+        "timePerRunMinutes": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10080
+        },
+        "people": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              }
+            },
+            "required": [
+              "role"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 20
+        },
+        "provenance": {
+          "type": "object",
+          "description": "Field name -> provenance of the value. Process facts the Coach extracted from the user's words (set_process_info) are coach_inferred with a verbatim quote.",
+          "propertyNames": {
+            "enum": [
+              "summary",
+              "trigger",
+              "frequency",
+              "volume",
+              "timePerRunMinutes",
+              "people"
+            ]
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/provenance"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "triageAnswers": {
+      "type": "object",
+      "properties": {
+        "outputIsUsed": {
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "couldStopDoingIt": {
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "processIsDocumented": {
+          "enum": [
+            "yes",
+            "partly",
+            "no",
+            "unknown"
+          ]
+        },
+        "peopleDoItTheSameWay": {
+          "enum": [
+            "yes",
+            "mostly",
+            "no",
+            "unknown"
+          ]
+        },
+        "ownerIdentified": {
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "hasKnownPainOrErrors": {
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "touchesRegulatedOrHighStakes": {
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "roiConstants": {
+      "type": "object",
+      "properties": {
+        "periodsPerYear": {
+          "type": "object",
+          "properties": {},
+          "description": "Runs per year for one period of the frequency, by period.",
+          "propertyNames": {
+            "enum": [
+              "hour",
+              "day",
+              "week",
+              "month",
+              "quarter",
+              "year",
+              "ad_hoc"
+            ]
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "buildHoursByRung": {
+          "type": "object",
+          "properties": {},
+          "description": "Placeholder build hours per rung.",
+          "propertyNames": {
+            "$ref": "#/$defs/rungId"
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "maintainHoursPerYearByRung": {
+          "type": "object",
+          "properties": {},
+          "description": "Placeholder maintenance hours per year per rung.",
+          "propertyNames": {
+            "$ref": "#/$defs/rungId"
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "testOverheadFactor": {
+          "type": "number",
+          "minimum": 0
+        },
+        "residualShare": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "triageMode": {
+          "type": "object",
+          "properties": {
+            "automatableShare": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "buildHours": {
+              "type": "number",
+              "minimum": 0
+            },
+            "maintainHoursPerYear": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "description": "Constants used when no step has been classified yet.",
+          "additionalProperties": false
+        },
+        "paybackMaxYears": {
+          "type": "number",
+          "minimum": 0
+        },
+        "marginalFactor": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "description": "The constants an ROI estimate used (rules-engine.md 11.3 and 18.1), copied into the result so the trace shows them. Every value is a number or a map of numbers, by design: the rules pack publishes placeholders, never text. Extra keys are allowed so that a later rules pack can add a constant, but each must be a number or a map of numbers.",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          }
+        ]
+      }
+    },
+    "roiEstimate": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "triage",
+            "classified"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "blueprint",
+            "steps"
+          ]
+        },
+        "stepIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stepId"
+          }
+        },
+        "runsPerYear": {
+          "type": "number",
+          "minimum": 0
+        },
+        "personsPerRun": {
+          "type": "number",
+          "minimum": 0
+        },
+        "manualHoursPerYear": {
+          "type": "number",
+          "minimum": 0
+        },
+        "automatableShare": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "hoursSavedPerYear": {
+          "type": "number",
+          "minimum": 0
+        },
+        "buildHours": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maintainHoursPerYear": {
+          "type": "number",
+          "minimum": 0
+        },
+        "netHoursPerYear": {
+          "type": "number"
+        },
+        "paybackYears": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "netValuePerYear": {
+          "type": "number"
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 400
+          }
+        },
+        "caveats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 400
+          }
+        },
+        "gate": {
+          "enum": [
+            "advisory",
+            "enforced"
+          ],
+          "description": "Whether the payback limit (TR-3) can change the triage verdict. v1 emits advisory until the owner calibrates the constants from design-partner data."
+        },
+        "constants": {
+          "$ref": "#/$defs/roiConstants",
+          "description": "The constants this estimate used (periodsPerYear, per-rung build and maintain hours, test overhead, residual share, triage-mode share, payback limits), copied into the result so the trace shows them. All are placeholders (ASSUMPTION)."
+        },
+        "engine": {
+          "$ref": "#/$defs/engineMeta"
+        }
+      },
+      "required": [
+        "mode",
+        "netHoursPerYear",
+        "paybackYears"
+      ],
+      "description": "Hours by default; money only when an org-supplied hourly rate exists. Advisory in v1: it never changes a triage verdict by itself. Derived: excluded from contentHash.",
+      "additionalProperties": false,
+      "x-derived": true
+    },
+    "triageBlock": {
+      "type": "object",
+      "properties": {
+        "verdict": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/triageVerdict"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-derived": true
+        },
+        "rationale": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "x-derived": true
+        },
+        "answers": {
+          "$ref": "#/$defs/triageAnswers"
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "coe_review_required",
+              "human_checkpoint_on_writes"
+            ]
+          },
+          "x-derived": true
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          },
+          "x-derived": true
+        },
+        "ruleTrace": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ruleTraceEntry"
+          },
+          "x-derived": true
+        },
+        "overrideDecisionId": {
+          "$ref": "#/$defs/decisionId"
+        },
+        "engine": {
+          "$ref": "#/$defs/engineMeta",
+          "x-derived": true
+        },
+        "provenance": {
+          "type": "object",
+          "description": "Answer name -> provenance of the answer. The seven answers are given on host controls (show_control), so they are user_stated with no evidence (ruling S11).",
+          "propertyNames": {
+            "enum": [
+              "outputIsUsed",
+              "couldStopDoingIt",
+              "processIsDocumented",
+              "peopleDoItTheSameWay",
+              "ownerIdentified",
+              "hasKnownPainOrErrors",
+              "touchesRegulatedOrHighStakes"
+            ]
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/provenance"
+          }
+        }
+      },
+      "required": [
+        "verdict",
+        "rationale"
+      ],
+      "description": "verdict, rationale, conditions, warnings, ruleTrace and engine are engine-owned (x-derived), recomputed and excluded from contentHash; answers and overrideDecisionId are not.",
+      "additionalProperties": false
+    },
+    "approval": {
+      "type": "object",
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "state": {
+          "enum": [
+            "not_required",
+            "pending",
+            "approved",
+            "rejected",
+            "expired"
+          ]
+        },
+        "requestedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "decidedBy": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "decidedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "policyKey": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Setting that required approval, for example coach.llmOverride.mode."
+        }
+      },
+      "required": [
+        "required",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "decisionOverride": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/decisionId"
+        },
+        "at": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "by": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "stepId": {
+          "$ref": "#/$defs/stepId"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "kind": {
+          "const": "override"
+        },
+        "chosenRungId": {
+          "$ref": "#/$defs/rungId"
+        },
+        "chosenToolId": {
+          "$ref": "#/$defs/toolId"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 15,
+          "maxLength": 400
+        },
+        "acknowledgedRuleIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "maxItems": 20
+        },
+        "engineRecommendation": {
+          "type": "object",
+          "properties": {
+            "rungId": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rungId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "toolId": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/toolId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "rulesPackVersion": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "traceHash": {
+              "$ref": "#/$defs/sha256"
+            }
+          },
+          "required": [
+            "rungId",
+            "toolId",
+            "rulesPackVersion"
+          ],
+          "additionalProperties": false
+        },
+        "overriddenRuleIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "description": "Soft predicates that the chosen option fails or skips. Hard predicates can never be overridden."
+        },
+        "approval": {
+          "$ref": "#/$defs/approval"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "incomplete",
+            "pending_approval",
+            "stale",
+            "revoked"
+          ],
+          "description": "Same states as Step.override.status. A failed request is never stored; a reviewer's rejection of a pending_approval override sets revoked (and approval.state rejected)."
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "stepId",
+        "at",
+        "by",
+        "chosenRungId",
+        "reason",
+        "engineRecommendation",
+        "status"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "chosenToolId is required unless the chosen rung is eliminate.",
+          "if": {
+            "properties": {
+              "chosenRungId": {
+                "not": {
+                  "const": "eliminate"
+                }
+              }
+            },
+            "required": [
+              "chosenRungId"
+            ]
+          },
+          "then": {
+            "required": [
+              "chosenToolId"
+            ]
+          }
+        }
+      ]
+    },
+    "decisionLlmJustification": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/decisionId"
+        },
+        "at": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "by": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "stepId": {
+          "$ref": "#/$defs/stepId"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "kind": {
+          "const": "llm_justification"
+        },
+        "source": {
+          "enum": [
+            "recommended",
+            "override",
+            "residual"
+          ]
+        },
+        "whyNotCode": {
+          "type": "string",
+          "minLength": 30,
+          "maxLength": 600
+        },
+        "citedDiagnosticFields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diagnosticFieldName"
+          },
+          "minItems": 1,
+          "maxItems": 6,
+          "uniqueItems": true
+        },
+        "validator": {
+          "$ref": "#/$defs/validator"
+        },
+        "fallback": {
+          "$ref": "#/$defs/fallback"
+        },
+        "costPerRun": {
+          "$ref": "#/$defs/costPerRun"
+        },
+        "provenance": {
+          "type": "object",
+          "description": "Provenance of the card text, keyed by field name like diagnostic.provenance. Only whyNotCode is ruled (R5): the host stores it after the user typed or edited the text, with origin user_stated. Without that provenance the engine counts whyNotCode as not provided (rules-engine.md CARD-6), the same as a missing one.",
+          "propertyNames": {
+            "enum": [
+              "whyNotCode"
+            ]
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/provenance"
+          }
+        },
+        "cardState": {
+          "enum": [
+            "proposed",
+            "confirmed",
+            "stale",
+            "rejected"
+          ]
+        },
+        "confirmedBy": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "confirmedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "approval": {
+          "$ref": "#/$defs/approval"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "stepId",
+        "at",
+        "by",
+        "source",
+        "whyNotCode",
+        "citedDiagnosticFields",
+        "validator",
+        "fallback",
+        "costPerRun",
+        "cardState"
+      ],
+      "description": "Append-only record of a justification card. costPerRun here is the snapshot at the time and is part of the content hash; the live value on the step is x-derived.",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "A confirmed card needs a whyNotCode the user wrote or edited (provenance.whyNotCode.origin = user_stated).",
+          "if": {
+            "properties": {
+              "cardState": {
+                "const": "confirmed"
+              }
+            },
+            "required": [
+              "cardState"
+            ]
+          },
+          "then": {
+            "required": [
+              "provenance"
+            ],
+            "properties": {
+              "provenance": {
+                "required": [
+                  "whyNotCode"
+                ],
+                "properties": {
+                  "whyNotCode": {
+                    "required": [
+                      "origin"
+                    ],
+                    "properties": {
+                      "origin": {
+                        "const": "user_stated"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "A proposed card carries no confirmer (a reset to proposed clears confirmedBy and confirmedAt).",
+          "if": {
+            "properties": {
+              "cardState": {
+                "const": "proposed"
+              }
+            },
+            "required": [
+              "cardState"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "confirmedBy"
+                  ]
+                },
+                {
+                  "required": [
+                    "confirmedAt"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "decisionTriageOverride": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/decisionId"
+        },
+        "at": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "by": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "stepId": {
+          "$ref": "#/$defs/stepId"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "kind": {
+          "const": "triage_override"
+        },
+        "verdictAtTime": {
+          "$ref": "#/$defs/triageVerdict"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 15,
+          "maxLength": 400
+        },
+        "approval": {
+          "$ref": "#/$defs/approval"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "pending_approval",
+            "stale",
+            "revoked"
+          ],
+          "description": "A reviewer's rejection of a pending_approval record sets revoked."
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "at",
+        "by",
+        "verdictAtTime",
+        "reason",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "decisionOrgRuleWaiver": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/decisionId"
+        },
+        "at": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "by": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "stepId": {
+          "$ref": "#/$defs/stepId"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "kind": {
+          "const": "org_rule_waiver"
+        },
+        "ruleId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 15,
+          "maxLength": 400
+        },
+        "approval": {
+          "$ref": "#/$defs/approval"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "pending_approval",
+            "stale",
+            "revoked"
+          ],
+          "description": "A reviewer's rejection of a pending_approval record sets revoked."
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "at",
+        "by",
+        "ruleId",
+        "reason",
+        "approval",
+        "status"
+      ],
+      "description": "Waiver of a soft org rule (policy orgRule severity warn).",
+      "additionalProperties": false
+    },
+    "runStats": {
+      "type": "object",
+      "properties": {
+        "stepId": {
+          "$ref": "#/$defs/stepId"
+        },
+        "window": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "$ref": "#/$defs/isoDateTime"
+            },
+            "to": {
+              "$ref": "#/$defs/isoDateTime"
+            },
+            "days": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "days"
+          ],
+          "additionalProperties": false
+        },
+        "runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "validatorFailures": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "humanCorrections": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "distinctOutputs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "newInputShapeRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "miner": {
+          "type": "object",
+          "properties": {
+            "minerVersion": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "ruleCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "coverage": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "heldOutAgreement": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "heldOutN": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "ruleCount",
+            "coverage",
+            "heldOutAgreement",
+            "heldOutN"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "window",
+        "runs",
+        "validatorFailures",
+        "humanCorrections",
+        "distinctOutputs",
+        "newInputShapeRate",
+        "miner"
+      ],
+      "description": "DEFERRED to v1.x (kept so the schema needs no migration then; v1 produces and collects none of it). Aggregate run history for one llm_node step. No raw inputs or outputs are stored in it.",
+      "additionalProperties": false,
+      "x-deferred": true
+    },
+    "graduationProposal": {
+      "type": "object",
+      "properties": {
+        "fromRungId": {
+          "const": "llm_node"
+        },
+        "pattern": {
+          "enum": [
+            "rules_first_llm_residual",
+            "pure_code"
+          ]
+        },
+        "ruleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "residualShare": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "requiresApproval": {
+          "const": true
+        },
+        "autoApply": {
+          "const": false
+        },
+        "next": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 300
+          }
+        }
+      },
+      "required": [
+        "fromRungId",
+        "pattern",
+        "requiresApproval",
+        "autoApply"
+      ],
+      "description": "DEFERRED to v1.x; not produced in v1.",
+      "additionalProperties": false,
+      "x-deferred": true
+    },
+    "decisionGraduation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/decisionId"
+        },
+        "at": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "by": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "stepId": {
+          "$ref": "#/$defs/stepId"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "kind": {
+          "const": "graduation_proposal"
+        },
+        "proposal": {
+          "$ref": "#/$defs/graduationProposal"
+        },
+        "stats": {
+          "$ref": "#/$defs/runStats"
+        },
+        "ruleTrace": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ruleTraceEntry"
+          }
+        },
+        "state": {
+          "enum": [
+            "proposed",
+            "accepted",
+            "declined",
+            "expired"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "stepId",
+        "at",
+        "by",
+        "proposal",
+        "stats",
+        "ruleTrace",
+        "state"
+      ],
+      "description": "DEFERRED to v1.x; not produced in v1.",
+      "additionalProperties": false,
+      "x-deferred": true
+    },
+    "decision": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/decisionOverride"
+        },
+        {
+          "$ref": "#/$defs/decisionLlmJustification"
+        },
+        {
+          "$ref": "#/$defs/decisionTriageOverride"
+        },
+        {
+          "$ref": "#/$defs/decisionOrgRuleWaiver"
+        },
+        {
+          "$ref": "#/$defs/decisionGraduation"
+        }
+      ],
+      "description": "Append-only records. Discriminated by kind."
+    },
+    "test": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/testId"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "kind": {
+          "enum": [
+            "happy_path",
+            "exception",
+            "regression",
+            "attended_run",
+            "negative"
+          ]
+        },
+        "stepIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stepId"
+          },
+          "uniqueItems": true
+        },
+        "exceptionIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/exceptionId"
+          },
+          "uniqueItems": true
+        },
+        "given": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "when": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "then": {
+          "type": "string",
+          "description": "The expected result (older text calls it 'expected').",
+          "maxLength": 500
+        },
+        "exampleData": {
+          "type": "string",
+          "description": "Sample input for the test as the user described it.",
+          "maxLength": 400
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "confirmed"
+          ],
+          "description": "Confirmation status of the test case; always equal to confirmationState and part of the content hash. Older drafts also stored the run outcome here; a reader moves passed, failed or skipped to lastRunOutcome and sets status from confirmationState."
+        },
+        "lastRunOutcome": {
+          "enum": [
+            "passed",
+            "failed",
+            "skipped"
+          ],
+          "description": "Outcome of the last run, written by the host from the run report. Run result: excluded from contentHash.",
+          "x-runResult": true
+        },
+        "lastRunAt": {
+          "$ref": "#/$defs/isoDateTime",
+          "x-runResult": true
+        },
+        "lastRunId": {
+          "type": "string",
+          "maxLength": 64,
+          "x-runResult": true
+        },
+        "lastRunDetail": {
+          "type": "string",
+          "description": "Detail of the last run. Run result: excluded from contentHash.",
+          "maxLength": 500,
+          "x-runResult": true
+        },
+        "createdBy": {
+          "enum": [
+            "user",
+            "coach",
+            "engine"
+          ],
+          "description": "Who created the entity. Host-written."
+        },
+        "confirmationState": {
+          "enum": [
+            "proposed",
+            "confirmed"
+          ],
+          "description": "proposed = suggested by the Coach or the engine; confirmed = the user confirmed it in the UI (never by a model tool call)."
+        },
+        "confirmedBy": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "User id of the person who confirmed. Host-written. Absent while the entity is proposed: every return to proposed, including the reset of a reopened Blueprint (ruling R3), clears it."
+        },
+        "confirmedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "provenance": {
+          "$ref": "#/$defs/evidence"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "kind",
+        "status",
+        "createdBy",
+        "confirmationState"
+      ],
+      "description": "A test case. status is the confirmation status and agrees with confirmationState. The run result (lastRunOutcome, lastRunAt, lastRunId, lastRunDetail) is separate, host-written and excluded from the content hash, so recording a run never changes an approved Blueprint's hash while confirming a test still does.",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "confirmed needs confirmedBy and confirmedAt; proposed carries neither (a reset to proposed clears both).",
+          "if": {
+            "properties": {
+              "confirmationState": {
+                "const": "confirmed"
+              }
+            },
+            "required": [
+              "confirmationState"
+            ]
+          },
+          "then": {
+            "required": [
+              "confirmedBy",
+              "confirmedAt"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "confirmedBy"
+                  ]
+                },
+                {
+                  "required": [
+                    "confirmedAt"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "proposed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "confirmationState": {
+                "const": "proposed"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "confirmed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "confirmationState": {
+                "const": "confirmed"
+              }
+            }
+          }
+        }
+      ],
+      "dependentRequired": {
+        "lastRunOutcome": [
+          "lastRunAt"
+        ]
+      }
+    },
+    "deployPlan": {
+      "type": "object",
+      "properties": {
+        "backupOwner": {
+          "type": "string",
+          "description": "Role or person who covers if the owner is away.",
+          "maxLength": 80
+        },
+        "failureSignals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "stepId": {
+                "$ref": "#/$defs/stepId"
+              },
+              "signal": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "notify": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "required": [
+              "stepId",
+              "signal"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 25
+        },
+        "manualFallback": {
+          "type": "string",
+          "description": "What people do if the automation is down for a day.",
+          "maxLength": 400
+        },
+        "changeTriggers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "maxItems": 10
+        },
+        "reviewAfterDays": {
+          "type": "integer",
+          "description": "When to review whether it still pays off. ROI tracking is manual entry at that review.",
+          "minimum": 7,
+          "maximum": 365
+        },
+        "createdBy": {
+          "enum": [
+            "user",
+            "coach",
+            "engine"
+          ],
+          "description": "Who created the entity. Host-written."
+        },
+        "confirmationState": {
+          "enum": [
+            "proposed",
+            "confirmed"
+          ],
+          "description": "proposed = suggested by the Coach or the engine; confirmed = the user confirmed it in the UI (never by a model tool call)."
+        },
+        "confirmedBy": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "User id of the person who confirmed. Host-written. Absent while the entity is proposed: every return to proposed, including the reset of a reopened Blueprint (ruling R3), clears it."
+        },
+        "confirmedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      },
+      "required": [
+        "createdBy",
+        "confirmationState"
+      ],
+      "description": "Go-live and monitoring plan written by record_deploy_plan.",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "confirmed needs confirmedBy and confirmedAt; proposed carries neither (a reset to proposed clears both).",
+          "if": {
+            "properties": {
+              "confirmationState": {
+                "const": "confirmed"
+              }
+            },
+            "required": [
+              "confirmationState"
+            ]
+          },
+          "then": {
+            "required": [
+              "confirmedBy",
+              "confirmedAt"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "confirmedBy"
+                  ]
+                },
+                {
+                  "required": [
+                    "confirmedAt"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "exportRecord": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/exportId"
+        },
+        "kind": {
+          "enum": [
+            "handoff_brief",
+            "process_document",
+            "review_packet",
+            "blueprint_json",
+            "automate_flow_draft"
+          ]
+        },
+        "fileFormat": {
+          "enum": [
+            "md",
+            "json",
+            "pdf",
+            "docx",
+            "csv",
+            "automate_draft"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "blueprint",
+            "steps"
+          ]
+        },
+        "stepIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stepId"
+          },
+          "uniqueItems": true
+        },
+        "targetId": {
+          "type": "string",
+          "description": "AutoMate flow reference or other target; the same limit as flowRef in the Coach tools (120, contract v2 Lengths).",
+          "maxLength": 120
+        },
+        "blueprintVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "contentHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "sensitivityAtExport": {
+          "$ref": "#/$defs/sensitivity"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "createdBy": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "fileFormat",
+        "scope",
+        "blueprintVersion",
+        "contentHash",
+        "sensitivityAtExport",
+        "createdAt",
+        "createdBy"
+      ],
+      "description": "Record that an export was made; the exported file is not stored in the Blueprint. contentHash is the SHA-256 of the exported bytes. Migration of the older 'format' values: spec_markdown -> (process_document, md); spec_json -> (blueprint_json, json); spec_pdf, spec_docx, csv -> (process_document, that format); automate_flow_draft -> (automate_flow_draft, automate_draft).",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "blueprint_json"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fileFormat": {
+                "const": "json"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "automate_flow_draft"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fileFormat": {
+                "const": "automate_draft"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "fileFormat": {
+                "const": "automate_draft"
+              }
+            },
+            "required": [
+              "fileFormat"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "automate_flow_draft"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "scope": {
+                "const": "steps"
+              }
+            },
+            "required": [
+              "scope"
+            ]
+          },
+          "then": {
+            "required": [
+              "stepIds"
+            ]
+          }
+        }
+      ]
+    },
+    "auditDetails": {
+      "type": "object",
+      "properties": {
+        "callId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "connectionId": {
+          "$ref": "#/$defs/connectionId"
+        },
+        "modelKey": {
+          "$ref": "#/$defs/modelKey"
+        },
+        "tool": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "entityIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "maxItems": 100
+        },
+        "evidenceRef": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "via": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "approvedVia": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "requestId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "counts": {
+          "$ref": "#/$defs/confirmationsResetCounts"
+        },
+        "from": {
+          "type": "string",
+          "description": "Previous value of a changed setting. For sensitivity_tightened and sensitivity_changed it is a sensitivity class.",
+          "maxLength": 32
+        },
+        "to": {
+          "type": "string",
+          "description": "New value of a changed setting. For sensitivity_tightened and sensitivity_changed it is a sensitivity class.",
+          "maxLength": 32
+        },
+        "turnId": {
+          "type": "string",
+          "description": "Chat turn of the model call that raised the class (sensitivity_tightened).",
+          "maxLength": 24
+        },
+        "revisionCount": {
+          "type": "integer",
+          "description": "Number of server revisions removed (blueprint_backup_deleted).",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "includesHistory": {
+          "type": "boolean",
+          "description": "True when the version history was removed with the latest revision (blueprint_backup_deleted; ruling S6 always removes it)."
+        }
+      },
+      "description": "Registered detail keys; other keys are allowed and preserved. counts: confirmations_reset. from, to, turnId: sensitivity_tightened (from and to also sensitivity_changed). revisionCount, includesHistory: blueprint_backup_deleted. via: how a Blueprint arrived or how a class was changed (panel, undo)."
+    },
+    "confirmationsResetCounts": {
+      "type": "object",
+      "properties": {
+        "steps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exceptions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deployPlan": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cards": {
+          "type": "integer",
+          "description": "Justification cards (step cards and decisions of kind llm_justification counted once per step) that went from confirmed back to proposed.",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "steps",
+        "exceptions",
+        "tests",
+        "deployPlan",
+        "cards"
+      ],
+      "description": "Number of entities that went from confirmed to proposed in a reset (ruling R3); an entity that was already proposed is not counted.",
+      "additionalProperties": false
+    },
+    "tenantId": {
+      "type": "string",
+      "description": "Opaque, server-issued id of the organisation (tenant). It is the same value as the tenantId of the sync envelope. The client never invents one and never reads meaning into it.",
+      "pattern": "^[A-Za-z0-9_-]{8,64}$"
+    },
+    "approvalRecord": {
+      "type": "object",
+      "properties": {
+        "recordId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{8,64}$"
+        },
+        "tenantId": {
+          "$ref": "#/$defs/tenantId"
+        },
+        "blueprintId": {
+          "$ref": "#/$defs/blueprintId"
+        },
+        "rev": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Server revision the reviewer approved (the sync envelope rev)."
+        },
+        "contentHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "reviewerId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "decision": {
+          "enum": [
+            "approved",
+            "rejected"
+          ]
+        },
+        "at": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "kid": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Id of the server signing key."
+        },
+        "signature": {
+          "type": "string",
+          "description": "Detached signature over the canonical record without signature (ASSUMPTION: base64url, 64 raw bytes for ES256).",
+          "pattern": "^[A-Za-z0-9_-]{43,512}$"
+        }
+      },
+      "required": [
+        "recordId",
+        "tenantId",
+        "blueprintId",
+        "rev",
+        "contentHash",
+        "reviewerId",
+        "decision",
+        "at",
+        "kid",
+        "signature"
+      ],
+      "description": "Server-signed approval. Carried in auditEntry.details when action = approval_recorded. tenantId names the organisation that issued the record and is inside the signed bytes; an approval gate counts a record only when its tenantId equals the Blueprint's tenant, so a record cannot be replayed into another organisation (rules-engine.md section 12.4, GATE-1). The AutoMate adapter verifies signature and recomputes contentHash from the Blueprint it imports.",
+      "additionalProperties": false
+    },
+    "selfAttestation": {
+      "type": "object",
+      "properties": {
+        "blueprintId": {
+          "$ref": "#/$defs/blueprintId"
+        },
+        "contentHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "attestedBy": {
+          "type": "string",
+          "description": "User id of the owner who attests. Owner role only (the host refuses any other user).",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "at": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "statement": {
+          "type": "string",
+          "description": "The owner's own words, for example that the design was reviewed.",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "plan": {
+          "enum": [
+            "free",
+            "individual",
+            "team"
+          ],
+          "description": "Plan the host saw when it recorded the attestation (audit information only; the gate reads the host context at the time it is evaluated, never this field). Enterprise never accepts a self-attestation, so it is not a value."
+        }
+      },
+      "required": [
+        "blueprintId",
+        "contentHash",
+        "attestedBy",
+        "at",
+        "statement"
+      ],
+      "description": "Review record of the Blueprint owner where no CoE Reviewer is required: Individual (Free or Paid) and a Team with exactly one billable seat (ruling R7). Carried in auditEntry.details when action = self_attested. It is client-made and unsigned and it never sets status approved (it is shown as self-attested). It satisfies an approval-required gate (ruling R2) only while the host context allows it and only for the contentHash it names: a changed Blueprint, a second billable seat or an Enterprise plan makes it stop counting (rules-engine.md section 12.4, GATE-1 to GATE-3).",
+      "additionalProperties": false
+    },
+    "auditEntry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/auditId"
+        },
+        "at": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "actor": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "user",
+                "coach",
+                "engine",
+                "system",
+                "reviewer",
+                "server"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        "action": {
+          "type": "string",
+          "description": "Action name; writers use only names registered in x-actions, readers accept any.",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        },
+        "entity": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "blueprint",
+                "step",
+                "exception",
+                "decision",
+                "test",
+                "export",
+                "triage",
+                "process",
+                "deploy_plan",
+                "approval"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        "blueprintVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "details": {
+          "$ref": "#/$defs/auditDetails"
+        }
+      },
+      "required": [
+        "id",
+        "at",
+        "actor",
+        "action",
+        "blueprintVersion"
+      ],
+      "description": "Append-only. Merged by union on id.",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "approval_recorded"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "details"
+            ],
+            "properties": {
+              "details": {
+                "$ref": "#/$defs/approvalRecord"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "self_attested"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "details"
+            ],
+            "properties": {
+              "details": {
+                "$ref": "#/$defs/selfAttestation"
+              },
+              "actor": {
+                "properties": {
+                  "type": {
+                    "const": "user"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "description": "Reset of a reopened Blueprint (ruling R3): counts of the entities that went back to proposed.",
+          "if": {
+            "properties": {
+              "action": {
+                "const": "confirmations_reset"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "details"
+            ],
+            "properties": {
+              "details": {
+                "required": [
+                  "counts"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "description": "Model-raised sensitivity (ruling R4): from and to are classes and to is strictly stricter than from (public < internal < confidential < restricted); turnId names the chat turn.",
+          "if": {
+            "properties": {
+              "action": {
+                "const": "sensitivity_tightened"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "details"
+            ],
+            "properties": {
+              "details": {
+                "required": [
+                  "from",
+                  "to",
+                  "turnId"
+                ],
+                "anyOf": [
+                  {
+                    "properties": {
+                      "from": {
+                        "const": "public"
+                      },
+                      "to": {
+                        "enum": [
+                          "internal",
+                          "confidential",
+                          "restricted"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "from": {
+                        "const": "internal"
+                      },
+                      "to": {
+                        "enum": [
+                          "confidential",
+                          "restricted"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "from": {
+                        "const": "confidential"
+                      },
+                      "to": {
+                        "enum": [
+                          "restricted"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "description": "Owner's one-click Delete backed-up copies (rulings S4 and S6): every server revision of the Blueprint, version history included, was removed and a tombstone (id, time, actor) is left; revisionCount and includesHistory say what was removed.",
+          "if": {
+            "properties": {
+              "action": {
+                "const": "blueprint_backup_deleted"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "details"
+            ],
+            "properties": {
+              "details": {
+                "required": [
+                  "revisionCount",
+                  "includesHistory"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "description": "Sensitivity changed by the owner in the panel or by the undo of a tightening: from and to are different classes.",
+          "if": {
+            "properties": {
+              "action": {
+                "const": "sensitivity_changed"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "details"
+            ],
+            "properties": {
+              "details": {
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "anyOf": [
+                  {
+                    "properties": {
+                      "from": {
+                        "const": "public"
+                      },
+                      "to": {
+                        "enum": [
+                          "internal",
+                          "confidential",
+                          "restricted"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "from": {
+                        "const": "internal"
+                      },
+                      "to": {
+                        "enum": [
+                          "public",
+                          "confidential",
+                          "restricted"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "from": {
+                        "const": "confidential"
+                      },
+                      "to": {
+                        "enum": [
+                          "public",
+                          "internal",
+                          "restricted"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "from": {
+                        "const": "restricted"
+                      },
+                      "to": {
+                        "enum": [
+                          "public",
+                          "internal",
+                          "confidential"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "syncState": {
+      "type": "object",
+      "properties": {
+        "tenantId": {
+          "description": "The tenant this Blueprint is synced to; null while it is local only. The client uses it to match an ApprovalRecord to the Blueprint's tenant (rules-engine.md section 12.4).",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/tenantId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deviceId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "baseRev": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Server revision the local edits are based on."
+        },
+        "lastSyncedRev": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lastSyncedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "state": {
+          "enum": [
+            "local_only",
+            "synced",
+            "dirty",
+            "conflict"
+          ]
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "description": "rev exists only here and in the sync envelope; version is the client edit counter and is never the same thing.",
+      "additionalProperties": false
+    },
+    "environmentProfileRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "policyVersion": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "description": "Pointer to a policy environmentProfile and the policy version it was read at.",
+      "additionalProperties": false
+    },
+    "toolCatalogEntry": {
+      "type": "object",
+      "properties": {
+        "toolId": {
+          "$ref": "#/$defs/toolId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "rungId": {
+          "$ref": "#/$defs/rungId"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operationTag"
+          },
+          "uniqueItems": true
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 400
+          }
+        },
+        "skillLevel": {
+          "$ref": "#/$defs/skillLevel"
+        },
+        "requiresInstall": {
+          "type": "boolean"
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "windows",
+              "macos",
+              "linux",
+              "cloud"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "systemKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "web_app",
+              "desktop_app",
+              "terminal_or_mainframe",
+              "spreadsheet_or_file",
+              "email_or_calendar",
+              "database",
+              "api_service",
+              "paper_or_phone"
+            ]
+          },
+          "description": "System kinds the tool can work with (hard predicate T-SYS). Empty or absent means the tool does not depend on a system kind and T-SYS passes.",
+          "uniqueItems": true
+        },
+        "accessModes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "builtin",
+              "connector",
+              "api",
+              "scriptable",
+              "file_or_db",
+              "http_html",
+              "ui",
+              "none"
+            ]
+          },
+          "description": "Access modes the tool uses to reach a system (hard predicate T-ACCESS). Empty or absent means the tool does not depend on an access mode and T-ACCESS passes.",
+          "uniqueItems": true
+        },
+        "unattendedSupport": {
+          "enum": [
+            "yes",
+            "needs_host",
+            "no"
+          ]
+        },
+        "dataFlow": {
+          "enum": [
+            "local",
+            "tenant",
+            "vendor_cloud",
+            "ai_cloud"
+          ]
+        },
+        "connectionTypes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "managed",
+              "byok_openrouter",
+              "byok_provider",
+              "custom_openai_compat",
+              "local"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "language": {
+          "enum": [
+            "powershell",
+            "python",
+            "vba",
+            "javascript",
+            "sql",
+            "csharp",
+            "bash"
+          ]
+        },
+        "hostToolIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolId"
+          },
+          "uniqueItems": true
+        },
+        "locatorKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "automation_id",
+              "name_or_control_type",
+              "dom_selector",
+              "image_or_coordinates"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "requiresTrainingData": {
+          "type": "boolean"
+        },
+        "maxInputVariability": {
+          "enum": [
+            "fixed_layout",
+            "few_templates",
+            "many_templates",
+            "unbounded"
+          ]
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "maxItemsPerRun": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxInputSize": {
+              "enum": [
+                "small",
+                "medium",
+                "large"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "handoff": {
+          "enum": [
+            "native_in_automate",
+            "script_file",
+            "flow_spec",
+            "formula_snippet",
+            "config_instructions",
+            "spec_only",
+            "none"
+          ]
+        },
+        "licence": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "entryVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lastVerified": {
+          "type": "string",
+          "format": "date",
+          "description": "Date the entry was last checked against a source."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1200,
+          "description": "VERIFY: and ASSUMPTION: markers live here."
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "accessed": {
+                "type": "string",
+                "format": "date"
+              }
+            },
+            "required": [
+              "url",
+              "accessed"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "toolId",
+        "name",
+        "rungId",
+        "capabilities",
+        "constraints",
+        "skillLevel",
+        "requiresInstall",
+        "platforms"
+      ],
+      "description": "The 8 contract fields plus the 12 optional extension fields (dataFlow, accessModes, unattendedSupport, hostToolIds, handoff, systemKinds, locatorKinds, connectionTypes, language, maxInputVariability, limits, requiresTrainingData) and catalog metadata. Org tools (policy orgToolEntry, environment.customTools[]) use this shape; when an extension field is absent the engine assumes dataFlow = vendor_cloud and unattendedSupport = no.",
+      "additionalProperties": false
+    },
+    "engineEnvironment": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "os": {
+          "type": "object",
+          "properties": {
+            "family": {
+              "const": "windows"
+            },
+            "softwareInstallPolicy": {
+              "enum": [
+                "free",
+                "request_approval",
+                "locked_down"
+              ]
+            }
+          },
+          "required": [
+            "family"
+          ],
+          "additionalProperties": false
+        },
+        "scripting": {
+          "type": "object",
+          "properties": {
+            "allowed": {
+              "type": "boolean"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "powershell",
+                  "python",
+                  "vba",
+                  "javascript",
+                  "csharp",
+                  "sql",
+                  "bash"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "powershellExecutionPolicy": {
+              "enum": [
+                "restricted",
+                "allsigned",
+                "remotesigned",
+                "unrestricted",
+                "bypass",
+                "undefined",
+                "unknown"
+              ]
+            },
+            "signedScriptsOnly": {
+              "type": "boolean"
+            },
+            "unattendedRequiresReview": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "installedToolIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolId"
+          },
+          "uniqueItems": true
+        },
+        "tools": {
+          "type": "object",
+          "properties": {
+            "permittedToolIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/toolId"
+              }
+            },
+            "forbiddenToolIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/toolId"
+              }
+            },
+            "permittedRungIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/rungId"
+              }
+            },
+            "forbiddenRungIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/rungId"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "network": {
+          "type": "object",
+          "properties": {
+            "internetAccess": {
+              "enum": [
+                "full",
+                "proxy_only",
+                "allowlist_only",
+                "air_gapped"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "llm": {
+          "type": "object",
+          "properties": {
+            "availableConnectionTypes": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "managed",
+                  "byok_openrouter",
+                  "byok_provider",
+                  "custom_openai_compat",
+                  "local"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "systems": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "systemId": {
+                "$ref": "#/$defs/slug"
+              },
+              "name": {
+                "type": "string"
+              },
+              "api": {
+                "enum": [
+                  "available",
+                  "restricted",
+                  "unavailable",
+                  "unknown"
+                ]
+              },
+              "authModel": {
+                "enum": [
+                  "sso",
+                  "service_account",
+                  "shared_login",
+                  "mfa_interactive",
+                  "none",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "systemId"
+            ]
+          }
+        },
+        "runners": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "end_user_attended",
+                  "shared_attended_workstation",
+                  "unattended_vm",
+                  "server_scheduler"
+                ]
+              },
+              "platform": {
+                "enum": [
+                  "windows",
+                  "linux",
+                  "cloud"
+                ]
+              },
+              "credentialModel": {
+                "enum": [
+                  "user_session",
+                  "service_account",
+                  "vaulted_secret",
+                  "none"
+                ]
+              },
+              "unattendedAllowed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "platform",
+              "credentialModel"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "sensitivityRules": {
+          "type": "object",
+          "properties": {
+            "public": {
+              "type": "object",
+              "properties": {
+                "llmConnectionTypes": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "managed",
+                      "byok_openrouter",
+                      "byok_provider",
+                      "custom_openai_compat",
+                      "local"
+                    ]
+                  },
+                  "uniqueItems": true
+                },
+                "toolDataFlowCeiling": {
+                  "enum": [
+                    "local",
+                    "tenant",
+                    "vendor_cloud",
+                    "ai_cloud"
+                  ],
+                  "description": "Highest data-flow class a non-model tool may have for this sensitivity class. Sourced from policy data.sensitivityRules[class].toolDataFlowCeiling; when the policy omits it the projection fills the defaults of rules-engine.md section 3.4."
+                },
+                "llmContentMode": {
+                  "enum": [
+                    "full",
+                    "redacted",
+                    "none"
+                  ],
+                  "description": "none = no content may go to any model for this class: the engine treats llm_node and llm_agent as unavailable."
+                }
+              },
+              "required": [
+                "llmConnectionTypes",
+                "toolDataFlowCeiling"
+              ],
+              "additionalProperties": false
+            },
+            "internal": {
+              "type": "object",
+              "properties": {
+                "llmConnectionTypes": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "managed",
+                      "byok_openrouter",
+                      "byok_provider",
+                      "custom_openai_compat",
+                      "local"
+                    ]
+                  },
+                  "uniqueItems": true
+                },
+                "toolDataFlowCeiling": {
+                  "enum": [
+                    "local",
+                    "tenant",
+                    "vendor_cloud",
+                    "ai_cloud"
+                  ],
+                  "description": "Highest data-flow class a non-model tool may have for this sensitivity class. Sourced from policy data.sensitivityRules[class].toolDataFlowCeiling; when the policy omits it the projection fills the defaults of rules-engine.md section 3.4."
+                },
+                "llmContentMode": {
+                  "enum": [
+                    "full",
+                    "redacted",
+                    "none"
+                  ],
+                  "description": "none = no content may go to any model for this class: the engine treats llm_node and llm_agent as unavailable."
+                }
+              },
+              "required": [
+                "llmConnectionTypes",
+                "toolDataFlowCeiling"
+              ],
+              "additionalProperties": false
+            },
+            "confidential": {
+              "type": "object",
+              "properties": {
+                "llmConnectionTypes": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "managed",
+                      "byok_openrouter",
+                      "byok_provider",
+                      "custom_openai_compat",
+                      "local"
+                    ]
+                  },
+                  "uniqueItems": true
+                },
+                "toolDataFlowCeiling": {
+                  "enum": [
+                    "local",
+                    "tenant",
+                    "vendor_cloud",
+                    "ai_cloud"
+                  ],
+                  "description": "Highest data-flow class a non-model tool may have for this sensitivity class. Sourced from policy data.sensitivityRules[class].toolDataFlowCeiling; when the policy omits it the projection fills the defaults of rules-engine.md section 3.4."
+                },
+                "llmContentMode": {
+                  "enum": [
+                    "full",
+                    "redacted",
+                    "none"
+                  ],
+                  "description": "none = no content may go to any model for this class: the engine treats llm_node and llm_agent as unavailable."
+                }
+              },
+              "required": [
+                "llmConnectionTypes",
+                "toolDataFlowCeiling"
+              ],
+              "additionalProperties": false
+            },
+            "restricted": {
+              "type": "object",
+              "properties": {
+                "llmConnectionTypes": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "managed",
+                      "byok_openrouter",
+                      "byok_provider",
+                      "custom_openai_compat",
+                      "local"
+                    ]
+                  },
+                  "uniqueItems": true
+                },
+                "toolDataFlowCeiling": {
+                  "enum": [
+                    "local",
+                    "tenant",
+                    "vendor_cloud",
+                    "ai_cloud"
+                  ],
+                  "description": "Highest data-flow class a non-model tool may have for this sensitivity class. Sourced from policy data.sensitivityRules[class].toolDataFlowCeiling; when the policy omits it the projection fills the defaults of rules-engine.md section 3.4."
+                },
+                "llmContentMode": {
+                  "enum": [
+                    "full",
+                    "redacted",
+                    "none"
+                  ],
+                  "description": "none = no content may go to any model for this class: the engine treats llm_node and llm_agent as unavailable."
+                }
+              },
+              "required": [
+                "llmConnectionTypes",
+                "toolDataFlowCeiling"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "public",
+            "internal",
+            "confidential",
+            "restricted"
+          ],
+          "additionalProperties": false
+        },
+        "policy": {
+          "type": "object",
+          "properties": {
+            "llmAgentMode": {
+              "enum": [
+                "allowed_with_justification",
+                "approval_required",
+                "forbidden"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "preferredToolIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolId"
+          },
+          "uniqueItems": true,
+          "maxItems": 40,
+          "description": "Org-preferred tools, most preferred first (environment profile preferredToolIds). Used only by tie-breaker TB-0 among tools that already fit at the same rung; never overrides the ladder or a hard predicate."
+        },
+        "customTools": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/toolCatalogEntry"
+              },
+              {
+                "properties": {
+                  "toolId": {
+                    "$ref": "#/$defs/orgToolId"
+                  }
+                }
+              }
+            ]
+          },
+          "maxItems": 200,
+          "description": "Org tools from environment.customTools[], projected to catalog entries."
+        },
+        "orgRules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/slug"
+              },
+              "type": {
+                "enum": [
+                  "forbid_rungs",
+                  "forbid_tools",
+                  "require_adjacent_rung",
+                  "require_attended",
+                  "require_field",
+                  "require_approval",
+                  "raise_sensitivity",
+                  "block_gate"
+                ]
+              },
+              "severity": {
+                "enum": [
+                  "info",
+                  "warn",
+                  "block"
+                ]
+              },
+              "rungIds": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/rungId"
+                }
+              },
+              "toolIds": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/toolId"
+                }
+              },
+              "rungId": {
+                "$ref": "#/$defs/rungId"
+              },
+              "placement": {
+                "enum": [
+                  "before",
+                  "after",
+                  "either"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ],
+            "description": "One resolved action of an org rule whose 'when' matched this step (policy.schema.json ruleAction). The policy layer evaluates 'when'; the engine only consumes forbid_rungs, forbid_tools, require_attended and require_adjacent_rung."
+          }
+        }
+      },
+      "required": [
+        "os",
+        "scripting",
+        "tools",
+        "network",
+        "llm",
+        "runners",
+        "sensitivityRules"
+      ],
+      "description": "Read-only projection of policy.environmentProfile + data.sensitivityRules + connections + orgRules. Built by the policy layer; the engine never reads policy directly (rules-engine.md section 3).",
+      "additionalProperties": false
+    },
+    "reopen": {
+      "type": "object",
+      "properties": {
+        "via": {
+          "enum": [
+            "import",
+            "share",
+            "restore"
+          ],
+          "description": "How the Blueprint arrived. A normal sync pull of a newer revision onto the same owner's own device is not an arrival and sets nothing."
+        },
+        "at": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "pending": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "sensitivity",
+              "process",
+              "triage"
+            ],
+            "description": "sensitivity = Blueprint.sensitivity; process = frequency, volume, timePerRunMinutes and people; triage = the seven triage answers."
+          },
+          "description": "Scopes whose values the user has not re-confirmed yet. The engine ignores a pending scope like a missing value (V-REOPEN) and asks again. The host removes a scope when every value in it was confirmed one by one, and removes reopen itself when none is left.",
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "via",
+        "at",
+        "pending"
+      ],
+      "description": "Present only while a reopened Blueprint still has unconfirmed singleton values (ruling R3). The entity-level reset is carried by confirmationState on steps, exceptions, tests and the deploy plan, which the host sets to proposed; this marker covers the values that have no confirmation state of their own. Part of the content hash, so no approval or self-attestation of the received copy carries over.",
+      "additionalProperties": false
+    }
+  }
+}

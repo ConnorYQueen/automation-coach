@@ -1,0 +1,5898 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:policy:1",
+  "title": "Coach policy bundle",
+  "description": "Signed Policy bundle: schemaVersion, orgId, version, issuedAt, expiresAt, signature, settings{<key>:{state, value?}} (design/00-shared-contract.md v2). `value` is present for locked and default and absent for user_choice. Two validation profiles from one file. CLIENT profile = this schema as is: known keys are validated, unknown non-'x-' keys (settings or root) are ignored with a warning, and the signature always covers the full canonical bytes. AUTHORING profile (portal and gateway at publish) = this schema plus #/$defs/strictRootKeys on the root and #/$defs/strictSettingKeys on `settings`, plus the publish checks that JSON Schema cannot express: x-minTier (a setting below its minimum tier is inert and rejected at publish), x-tierBounds (numeric and length limits per tier), x-minPlan ('individual' = needs Individual Paid or above: sync, backup, restore, history, devices, managed; absent = Individual Free and up; an entitlement fact, not an org tier), x-phase (p2 settings are accepted but hidden and inert until the feature ships), cross-references (toolId exists in the catalog or customTools, ids resolve, field paths exist in the Blueprint field registry), and monotone toolDataFlowCeiling across classes. An unknown enum value in a known key makes the client drop that one setting to its catalog default with a warning. A breaking change bumps schemaVersion. Generated from the same table as design/settings-catalog.md.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "orgId",
+    "version",
+    "issuedAt",
+    "expiresAt",
+    "signature",
+    "settings"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Required. Version of this policy schema (integer; the Blueprint uses a '1.x' string). A client that sees a higher number keeps the last good bundle and shows 'update required'."
+    },
+    "orgId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{3,64}$",
+      "description": "The Individual baseline bundle uses the orgId 'baseline'."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic per org. Rollback publishes old content under a new, higher version. Clients refuse a lower version than the one they hold."
+    },
+    "issuedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Hard end of the bundle's validity (a bundle expiry, not one of the three grace clocks). issuedAt + tenant.policy.offlineGraceDays (baseline: 180 days, ASSUMPTION). Behaviour after this is policy.onExpiry (the baseline falls back to compiled-in defaults)."
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{20,600}\\.\\.[A-Za-z0-9_-]{86}$",
+      "description": "Detached JWS compact serialization (RFC 7515 appendix F): protected header, two dots, signature. alg ES256 (64-byte signature, 86 base64url characters) unless Ed25519 support is verified in the chosen KMS and .NET (contract decision 7); the header carries alg and kid. Payload is the RFC 8785 canonical JSON of this object without the 'signature' member. The kid resolves through the root-signed key-set manifest (tiers.md section 4)."
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "connections.managed.enabled": {
+          "type": "object",
+          "description": "Needs Individual Paid or above. Master switch for the paid gateway path. The gateway refuses calls for an org that has switched it off, so this one is hard. Managed is generally available only after written upstream permission is on file; until then it sits behind a per-tenant flag (tenant.managed.flag) and this switch has no effect while the flag is off.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "individual",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch",
+          "x-minPlan": "individual"
+        },
+        "connections.byokOpenrouter.enabled": {
+          "type": "object",
+          "description": "Steers people off personal OpenRouter keys (byok_openrouter means the customer's own OpenRouter key). Soft unless the org also blocks the host at its firewall.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "connections.byokProvider.enabled": {
+          "type": "object",
+          "description": "Same switch for direct provider keys. Soft unless the org blocks the provider hosts.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "connections.customOpenaiCompat.enabled": {
+          "type": "object",
+          "description": "Turns user-created custom endpoints on or off. Org-provisioned connections (below) are not affected.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "connections.local.enabled": {
+          "type": "object",
+          "description": "Local models keep data on the device. A regulated org may still want to limit which local models run (see models.allowlist).",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "connections.allowPersonalKeys": {
+          "type": "object",
+          "description": "Master switch for any credential the user types in. When false only managed and org-provisioned connections remain. Soft on its own; on a managed device the machine enrollment value RequireOrgPolicy makes it a hard path (tiers.md section 4.3).",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "connections.byokProvider.allowedProviders": {
+          "type": "object",
+          "description": "Limits direct-provider BYOK to approved providerIds. null = any, [] = none.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/slug"
+                  },
+                  "uniqueItems": true,
+                  "maxItems": 50
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": null,
+          "x-phase": "launch"
+        },
+        "connections.endpointHostAllowlist": {
+          "type": "object",
+          "description": "Limits user-entered custom endpoints to approved hosts. Loopback for the local type is always allowed.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/hostGlob"
+                  },
+                  "uniqueItems": true,
+                  "maxItems": 100
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": null,
+          "x-phase": "launch"
+        },
+        "connections.requireTls": {
+          "type": "object",
+          "description": "Blocks plain-http custom endpoints. Loopback local endpoints are exempt. The Connection schema already refuses non-https endpoints outside loopback, so locking this to false only matters for older clients.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "connections.proxy": {
+          "type": "object",
+          "description": "How direct connections reach the internet behind a corporate proxy.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/proxy"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": {
+            "mode": "system"
+          },
+          "x-phase": "launch"
+        },
+        "connections.orgConnections": {
+          "type": "object",
+          "description": "Org-provisioned connections (the company gateway, Azure OpenAI, a shared provider account). Same shape as the Connection entity without credentialRef (design/connection.schema.json). No secrets in the bundle: the credential comes from the user, OAuth, or the Enterprise vault (P2).",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/orgConnection"
+              },
+              "maxItems": 25
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Locked only",
+          "x-default": [],
+          "x-phase": "launch"
+        },
+        "models.allowlist": {
+          "type": "object",
+          "description": "If set, only matching model keys can be picked (keys are namespaced: OpenRouter ids as is, `<providerId>/<id>`, `custom/<id>`, `local/<id>`). Hard on managed, soft elsewhere. null = no restriction.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/modelKeyGlob"
+                  },
+                  "uniqueItems": true,
+                  "maxItems": 500
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": null,
+          "x-phase": "launch"
+        },
+        "models.denylist": {
+          "type": "object",
+          "description": "Deny always wins over allow. Same enforcement split as the allow list.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/modelKeyGlob"
+              },
+              "uniqueItems": true,
+              "maxItems": 500
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": [],
+          "x-phase": "launch"
+        },
+        "models.minCertification": {
+          "type": "object",
+          "description": "Floor on the certification label. Default shows labels without blocking so local launch models work; admins usually lock 'works'. A model listed in models.adminApprovedLocal counts as works. Label meanings (S1): until the evaluation harness ships every model shows experimental (\"not yet evaluated\"); uncertified means evaluated and failed. So a floor of works or certified blocks every model except admin-approved local ones until the harness ships.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "certified",
+                "works",
+                "experimental",
+                "uncertified"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "individual",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": "uncertified",
+          "x-phase": "launch"
+        },
+        "models.adminApprovedLocal": {
+          "type": "object",
+          "description": "Local models an admin has vetted. When models.adminApprovedLocalCountsAsWorks is on, a listed model counts as works for models.minCertification and for every class floor, which is how a restricted process can use a local model that has no certification label. The capability probe still applies.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/modelKeyGlob"
+                  },
+                  {
+                    "pattern": "^local/"
+                  }
+                ]
+              },
+              "uniqueItems": true,
+              "maxItems": 100
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Locked only",
+          "x-default": [],
+          "x-phase": "launch"
+        },
+        "models.adminApprovedLocalCountsAsWorks": {
+          "type": "object",
+          "description": "Switch for the rule above. Off = approved local models keep their real label.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "models.requireCapabilityProbePass": {
+          "type": "object",
+          "description": "A model that fails the tool-call or JSON-schema probe cannot drive coaching. Lock it so users cannot force one through.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "models.zeroRetentionProvidersOnly": {
+          "type": "object",
+          "description": "Route only to providers that do not retain prompts. managed always forces provider data-collection deny whatever this says; for byok_openrouter it is a request flag; elsewhere unverifiable. VERIFY provider flags.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": false,
+          "x-phase": "launch"
+        },
+        "models.fallback": {
+          "type": "object",
+          "description": "Default fails loudly so a silent swap to a different model never changes how a recommendation is explained.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "fail_loud",
+                "fallback_within_allowlist"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Connections and models",
+          "x-minTier": "individual",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": "fail_loud",
+          "x-phase": "launch"
+        },
+        "spend.orgMonthlyCapUsd": {
+          "type": "object",
+          "description": "Hard monthly ceiling on managed usage across the org. null = none. Managed only. Caps convert to micro-USD as round half up (USD x 1,000,000).",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10000000
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Spend",
+          "x-minTier": "team",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": null,
+          "x-phase": "launch"
+        },
+        "spend.perUserMonthlyCapUsd": {
+          "type": "object",
+          "description": "Hard monthly ceiling per user on managed usage.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10000000
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Spend",
+          "x-minTier": "team",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": null,
+          "x-phase": "launch"
+        },
+        "spend.perSessionCapUsd": {
+          "type": "object",
+          "description": "Stops a runaway coaching session. Gateway meters managed; the client estimates for other connections.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10000000
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Spend",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": null,
+          "x-phase": "launch"
+        },
+        "spend.maxPricePerMillionOutputTokensUsd": {
+          "type": "object",
+          "description": "Hides models above a list price. VERIFY the source of price data (OpenRouter model list or our own table).",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10000000
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Spend",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": null,
+          "x-phase": "launch"
+        },
+        "spend.warnAtPercent": {
+          "type": "object",
+          "description": "Percent of any cap at which the user and admin are warned.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Spend",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": 80,
+          "x-phase": "launch"
+        },
+        "spend.onCapReached": {
+          "type": "object",
+          "description": "Hard stop by default. warn_only is for pilots. Managed only.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "enum": [
+                "block",
+                "warn_only"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Spend",
+          "x-minTier": "team",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": "block",
+          "x-phase": "launch"
+        },
+        "spend.byokEstimatedMonthlyCapUsd": {
+          "type": "object",
+          "description": "Client-side estimate for BYOK calls. Advisory: the real hard cap must be set on the provider key.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10000000
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Spend",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": null,
+          "x-phase": "launch"
+        },
+        "spend.personalMonthlyCapUsd": {
+          "type": "object",
+          "description": "The user's own tighter cap on `managed` usage. It cannot exceed an org cap. Needs Individual Paid or above, because `managed` does.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10000000
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Spend",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Default only",
+          "x-default": null,
+          "x-phase": "launch",
+          "x-minPlan": "individual"
+        },
+        "data.sensitivityRules": {
+          "type": "object",
+          "description": "What each sensitivity class permits: connection types, content mode, model floor, backup and sync, approval metadata sync, export, and the tool data-flow ceiling. Editing is not available on Individual, which runs the default matrix of the signed baseline bundle. Defaults in the matrix below.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "object",
+              "required": [
+                "public",
+                "internal",
+                "confidential",
+                "restricted"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "public": {
+                  "$ref": "#/$defs/sensitivityClassRule"
+                },
+                "internal": {
+                  "$ref": "#/$defs/sensitivityClassRule"
+                },
+                "confidential": {
+                  "$ref": "#/$defs/sensitivityClassRule"
+                },
+                "restricted": {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/sensitivityClassRule"
+                    },
+                    {
+                      "properties": {
+                        "toolDataFlowCeiling": {
+                          "enum": [
+                            "local",
+                            "tenant"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": {
+            "public": {
+              "llmConnectionTypes": [
+                "managed",
+                "byok_openrouter",
+                "byok_provider",
+                "custom_openai_compat",
+                "local"
+              ],
+              "llmContentMode": "full",
+              "minModelCertification": "uncertified",
+              "requireZeroRetentionProvider": false,
+              "previewBeforeSend": false,
+              "sync": "on",
+              "approvalMetadataSync": true,
+              "exportAllowed": true,
+              "requireApprovalBeforeHandoff": false,
+              "toolDataFlowCeiling": "ai_cloud"
+            },
+            "internal": {
+              "llmConnectionTypes": [
+                "managed",
+                "byok_openrouter",
+                "byok_provider",
+                "custom_openai_compat",
+                "local"
+              ],
+              "llmContentMode": "full",
+              "minModelCertification": "uncertified",
+              "requireZeroRetentionProvider": false,
+              "previewBeforeSend": false,
+              "sync": "on",
+              "approvalMetadataSync": true,
+              "exportAllowed": true,
+              "requireApprovalBeforeHandoff": false,
+              "toolDataFlowCeiling": "ai_cloud"
+            },
+            "confidential": {
+              "llmConnectionTypes": [
+                "managed",
+                "custom_openai_compat",
+                "local"
+              ],
+              "llmContentMode": "redacted",
+              "minModelCertification": "works",
+              "requireZeroRetentionProvider": true,
+              "previewBeforeSend": true,
+              "sync": "on",
+              "approvalMetadataSync": true,
+              "exportAllowed": true,
+              "requireApprovalBeforeHandoff": false,
+              "toolDataFlowCeiling": "tenant"
+            },
+            "restricted": {
+              "llmConnectionTypes": [
+                "local"
+              ],
+              "llmContentMode": "redacted",
+              "minModelCertification": "works",
+              "requireZeroRetentionProvider": true,
+              "previewBeforeSend": true,
+              "sync": "opt_in",
+              "approvalMetadataSync": true,
+              "exportAllowed": true,
+              "requireApprovalBeforeHandoff": true,
+              "toolDataFlowCeiling": "local"
+            }
+          },
+          "x-phase": "launch"
+        },
+        "data.minimumSensitivity": {
+          "type": "object",
+          "description": "Floor for new Blueprints. Users and rules can raise a class, never lower it. Sync server rejects Blueprints below the floor.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "public",
+                "internal",
+                "confidential",
+                "restricted"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": "internal",
+          "x-phase": "launch"
+        },
+        "data.redaction.builtinPatterns": {
+          "type": "object",
+          "description": "Built-in detectors that run before text leaves the device. Email and phone are off by default because process descriptions are full of them. VERIFY detector quality.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "secret_keys",
+                  "private_key_blocks",
+                  "payment_card",
+                  "us_ssn",
+                  "iban",
+                  "email_address",
+                  "phone_number",
+                  "ipv4_address",
+                  "windows_user_path"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": [
+            "secret_keys",
+            "private_key_blocks",
+            "payment_card",
+            "us_ssn"
+          ],
+          "x-phase": "launch"
+        },
+        "data.redaction.customPatterns": {
+          "type": "object",
+          "description": "Org-specific patterns (employee ids, project codenames). Linear-time regex or keyword lists only.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/redactionPattern"
+              },
+              "maxItems": 100
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": [],
+          "x-phase": "launch"
+        },
+        "data.redaction.defaultAction": {
+          "type": "object",
+          "description": "What a built-in detector does on a hit. Custom patterns carry their own action.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "redact",
+                "block",
+                "warn"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": "redact",
+          "x-phase": "launch"
+        },
+        "data.redaction.surfaces": {
+          "type": "object",
+          "description": "Where built-in detectors apply. Blueprint sync is deliberately absent: backup must be faithful.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "prompt",
+                  "transcript",
+                  "export",
+                  "diagnostics"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": [
+            "prompt",
+            "transcript",
+            "diagnostics"
+          ],
+          "x-phase": "launch"
+        },
+        "data.redaction.reversible": {
+          "type": "object",
+          "description": "Swap matches for stable tokens before sending and restore them locally in the reply. The mapping never leaves the device.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "data.exports.allowedKinds": {
+          "type": "object",
+          "description": "Which ExportRecord kinds are allowed (handoff_brief, process_document, review_packet, blueprint_json, automate_flow_draft). null = all, [] = none. Narrows data.sensitivityRules[class].exportAllowed.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/exportKind"
+                  },
+                  "uniqueItems": true,
+                  "maxItems": 5
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": null,
+          "x-phase": "launch"
+        },
+        "retention.transcripts.storage": {
+          "type": "object",
+          "description": "Transcripts stay on the device by default. 'none' keeps them in memory only.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "local",
+                "none"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": "local",
+          "x-phase": "launch"
+        },
+        "retention.transcripts.days": {
+          "type": "object",
+          "description": "Local auto-delete age. ASSUMPTION: 90 days.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3650
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": 90,
+          "x-phase": "launch"
+        },
+        "retention.localLogs.days": {
+          "type": "object",
+          "description": "Local diagnostic log age. Logs never contain prompts or secrets.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 90
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": 14,
+          "x-phase": "launch"
+        },
+        "retention.blueprints.versionsKept": {
+          "type": "object",
+          "description": "Blueprint versions kept on the server per Blueprint. ASSUMPTION: 50.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "team",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": 50,
+          "x-phase": "launch"
+        },
+        "retention.blueprints.trashWindowDays": {
+          "type": "object",
+          "description": "Days a deleted Blueprint stays recoverable. After that it leaves live storage; copies persist in backups for up to the 35-day backup window, which the DPA states. ASSUMPTION: 30 days.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 365
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "team",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": 30,
+          "x-phase": "launch"
+        },
+        "retention.auditLog.days": {
+          "type": "object",
+          "description": "Server audit log age. Team default and cap 365, Enterprise up to 3650, checked at publish.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 30,
+              "maximum": 3650
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "team",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": 365,
+          "x-phase": "launch",
+          "x-tierBounds": {
+            "team": {
+              "maximum": 365
+            },
+            "enterprise": {
+              "maximum": 3650
+            }
+          }
+        },
+        "sync.blueprints.enabled": {
+          "type": "object",
+          "description": "Master switch for full Blueprint backup and sync, all classes. Per-class behavior (on, opt_in, forbidden) is data.sensitivityRules[class].sync. Locked off: the client stops uploading Blueprint bodies and the server rejects body writes. ASSUMPTION (architecture X10): body-less approval-metadata envelopes (ids, contentHash, status, sensitivity, schemaVersion, size; no title or content) still flow whenever approvals are in force and the class's approvalMetadataSync is yes, so approval and AutoMate handoff keep working. Sync, backup, restore and version history need Individual Paid or above, an account and a valid entitlement token; Individual Free has none of them (R1).",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "individual",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch",
+          "x-minPlan": "individual"
+        },
+        "sync.transcripts.enabled": {
+          "type": "object",
+          "description": "Opt-in transcript sync (a sync feature: Individual Paid or above). An admin can lock it to false but can never force it on: transcripts are local unless the user opts in.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            },
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "locked"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "value": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "individual",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": false,
+          "x-phase": "launch",
+          "x-minPlan": "individual"
+        },
+        "telemetry.crashReports": {
+          "type": "object",
+          "description": "Crash reports with no content. Off everywhere (contract decision 10). No telemetry sink exists at launch, so the setting is reserved: hidden and inert (P2). An admin can only lock or default it to off; `anonymous` can be chosen only by the user (user_choice), and only once a sink ships with its consent text.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "off",
+                "anonymous"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            },
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "locked",
+                      "default"
+                    ]
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "value": {
+                    "const": "off"
+                  }
+                }
+              }
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": "off",
+          "x-phase": "p2"
+        },
+        "telemetry.usageAnalytics": {
+          "type": "object",
+          "description": "Product analytics. Off everywhere; no product analytics are planned. No telemetry sink exists at launch, so the setting is reserved: hidden and inert (P2). An admin can only lock or default it to off; `anonymous` can be chosen only by the user (user_choice), and only once a sink ships with its consent text. No 'identified' option exists. Client-reported usage for the org is an audit setting (governance.auditLog.clientReportedUsage), not telemetry.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "off",
+                "anonymous"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            },
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "locked",
+                      "default"
+                    ]
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "value": {
+                    "const": "off"
+                  }
+                }
+              }
+            }
+          ],
+          "x-group": "Data and privacy",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": "off",
+          "x-phase": "p2"
+        },
+        "coach.aiMode": {
+          "type": "object",
+          "description": "off = wizard only, no model traffic on any connection. lite_only = the engine picks every question and the model only phrases it and extracts the answer. full = the guided coach. managed calls are refused by the gateway when the org is off (hard); other connections are enforced by the client (soft).",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "off",
+                "lite_only",
+                "full"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Coach behavior",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": "full",
+          "x-phase": "launch"
+        },
+        "coach.aiFlows.allowedByMode": {
+          "type": "object",
+          "description": "Which optional flows each aiMode allows: rescue (rescue my failed automation) and second_opinion (critique with a cross-model check that obeys data.sensitivityRules). ASSUMPTION: second_opinion needs full.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/aiFlowsByMode"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Coach behavior",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": {
+            "off": [],
+            "lite_only": [
+              "rescue"
+            ],
+            "full": [
+              "rescue",
+              "second_opinion"
+            ]
+          },
+          "x-phase": "launch"
+        },
+        "coach.llmOverride.mode": {
+          "type": "object",
+          "description": "When a user picks llm_node or llm_agent over an earlier-rung recommendation: warn only, need approval, or block. The sync server checks approval records before 'approved'.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "advisory",
+                "approval_required",
+                "forbidden"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Coach behavior",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": "advisory",
+          "x-phase": "launch"
+        },
+        "coach.llmOverride.requireJustificationCard": {
+          "type": "object",
+          "description": "User must fill Step.llmJustification (whyNotCode, validator, fallback, costPerRun) before the override stands.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Coach behavior",
+          "x-minTier": "individual",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "coach.llmOverride.approverRole": {
+          "type": "object",
+          "description": "Who approves an LLM-first override when mode is approval_required. Only a CoE Reviewer approves, never their own Blueprint (contract decision 9), so the enum has one value today; the key stays so a later role needs no schema break.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "enum": [
+                "coe_reviewer"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Coach behavior",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Locked only",
+          "x-default": "coe_reviewer",
+          "x-phase": "launch"
+        },
+        "coach.llmAgent.mode": {
+          "type": "object",
+          "description": "llm_agent is discouraged by the contract. Admins can require approval or remove the rung entirely. The engine projection maps forbidden to its policy.llmAgentMode.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "allowed_with_justification",
+                "approval_required",
+                "forbidden"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Coach behavior",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": "allowed_with_justification",
+          "x-phase": "launch"
+        },
+        "coach.llmNode.requireValidatorAndFallback": {
+          "type": "object",
+          "description": "Every llm_node step needs a validator and a fallback before the Blueprint can be exported. Engine rule, re-checked on the server at approval.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Coach behavior",
+          "x-minTier": "individual",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "coach.override.mode": {
+          "type": "object",
+          "description": "Same control for any other override of the engine's recommended rung (advisory, approval_required, or forbidden). A reason is always required (Step.override.reason).",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "advisory",
+                "approval_required",
+                "forbidden"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Coach behavior",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": "advisory",
+          "x-phase": "launch"
+        },
+        "coach.override.reasonMinChars": {
+          "type": "object",
+          "description": "Minimum length of an override reason. The floor is 15, equal to the Blueprint floor, and the ceiling is 400, the longest reason the Blueprint accepts (contract lengths), so no admin value makes every override impossible; the host rejects anything shorter.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 15,
+              "maximum": 400
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Coach behavior",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": 20,
+          "x-phase": "launch"
+        },
+        "coach.triageOverride.mode": {
+          "type": "object",
+          "description": "Continuing to build after a 'dont_automate' or 'fix_process_first' verdict: allow with a reason, need approval, or block.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "allowed_with_reason",
+                "approval_required",
+                "forbidden"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Coach behavior",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": "allowed_with_reason",
+          "x-phase": "launch"
+        },
+        "automate.actions.mode": {
+          "type": "object",
+          "description": "off = no AutoMate actions. draft_only = Coach writes new drafts after a diff approval. apply_existing = may also change existing workflows after a diff approval. Nothing is ever applied without a human click.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "off",
+                "draft_only",
+                "apply_existing"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "AutoMate actions",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": "draft_only",
+          "x-phase": "launch"
+        },
+        "automate.actions.allowedKinds": {
+          "type": "object",
+          "description": "Delete is off by default; when enabled it still needs its own click.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "create",
+                  "update",
+                  "delete"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "AutoMate actions",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": [
+            "create",
+            "update"
+          ],
+          "x-phase": "launch"
+        },
+        "automate.actions.maxChangesPerDiff": {
+          "type": "object",
+          "description": "Caps how large a diff the user must approve in one click, so review stays real. ASSUMPTION: 25.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "AutoMate actions",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": 25,
+          "x-phase": "launch"
+        },
+        "automate.testRuns.mode": {
+          "type": "object",
+          "description": "Test runs need an explicit click and an attending user. Unattended test runs do not exist at launch; the enum grows later.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "off",
+                "attended_only"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "AutoMate actions",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": "attended_only",
+          "x-phase": "launch"
+        },
+        "automate.testRuns.blockProductionSystems": {
+          "type": "object",
+          "description": "Refuse test runs against systems marked isProduction in the environment profile.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "AutoMate actions",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "governance.approval.mode": {
+          "type": "object",
+          "description": "never = no review. by_rule = review only when an override or the Blueprint's sensitivity class asks for it; org rules are P2 and not a source of approval gates at launch (S14). always = every Blueprint is reviewed before the gates below. Approvals are server-issued records from Team up. Individual (Free or Paid) and a Team with exactly one billable seat meet an approval-required gate with a recorded self-attestation instead (R7); Enterprise never accepts one.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "enum": [
+                "never",
+                "by_rule",
+                "always"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Locked only",
+          "x-default": "by_rule",
+          "x-phase": "launch"
+        },
+        "governance.approval.requiredBefore": {
+          "type": "object",
+          "description": "Gates that need approval when approval applies. A gate is met by exactly one of: (a) approved by a CoE Reviewer for the current contentHash, with a signed approval record that the AutoMate adapter checks by recomputing contentHash, not just Blueprint.status; (b) a SelfAttestation for the current contentHash, valid only where R7 allows it. This holds for every sensitivity class including restricted, and approval metadata may sync even for a local-only restricted Blueprint. Gate values (R2): build_handoff (entering the handoff stage), handoff_brief (creating that export), automate_flow_draft (creating that export or writing a draft into AutoMate), export (any other export kind except review_packet), automate_apply, automate_test_run. review_packet has no gate: it is how review is requested.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "build_handoff",
+                  "handoff_brief",
+                  "automate_flow_draft",
+                  "export",
+                  "automate_apply",
+                  "automate_test_run"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Locked only",
+          "x-default": [
+            "automate_apply"
+          ],
+          "x-phase": "launch"
+        },
+        "governance.approval.minReviewers": {
+          "type": "object",
+          "description": "Number of distinct approvers. One at Team. Multi-reviewer approval is Enterprise and P2: hidden, and inert at 1, until built.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": 1,
+          "x-phase": "p2",
+          "x-tierBounds": {
+            "team": {
+              "maximum": 1
+            },
+            "enterprise": {
+              "maximum": 3
+            }
+          }
+        },
+        "governance.approval.reviewSlaDays": {
+          "type": "object",
+          "description": "Reminder and escalation age for the review queue. null = no reminders. P2: hidden until built.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 60
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": null,
+          "x-phase": "p2"
+        },
+        "governance.adminContentAccess": {
+          "type": "object",
+          "description": "What an Admin can read of synced Blueprints. Always metadata (title, owner, status, class, dates, size, review state). break_glass adds audited content access: a stated reason of at least 15 characters (ASSUMPTION), a notice to the owner, a time box (governance.breakGlass.timeBoxHours) and a log entry for every read. Team: one Admin may approve their own request. Enterprise: a second Admin must approve, meaning any other user holding Admin in the tenant and never the requester, and with only one Admin the request fails closed (R6, S7). A grant cannot be renewed (S7). metadata_only removes break-glass. Content is otherwise readable only by the owner, explicit shares, and CoE Reviewers once in review.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "enum": [
+                "metadata_only",
+                "break_glass"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": "break_glass",
+          "x-phase": "launch"
+        },
+        "governance.breakGlass.timeBoxHours": {
+          "type": "object",
+          "description": "How long one approved break-glass read stays open before it ends on its own. Default 4 hours (ASSUMPTION, R6). Policy can only shorten it: the maximum is 4, so no bundle can lengthen it. Only meaningful while governance.adminContentAccess is break_glass. Fixed rules, not settings: a reason is required; the Blueprint owner is notified when access starts, naming the Admin and the reason; access ends automatically at expiry; every read is logged. A grant cannot be renewed: after expiry a new request with a new reason (and, at Enterprise, a new second-Admin approval) is needed. No owner veto (ASSUMPTION; S7). Portal events: break_glass_requested, break_glass_approved, break_glass_read, break_glass_expired.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": 4,
+          "x-phase": "launch"
+        },
+        "governance.intake.enabled": {
+          "type": "object",
+          "description": "Turns on the intake queue: employees submit process ideas, reviewers triage them. P2: hidden until built.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": false,
+          "x-phase": "p2"
+        },
+        "governance.intake.requiredFields": {
+          "type": "object",
+          "description": "Fields an intake submission must have. ASSUMPTION: this field list. P2.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "businessOwner",
+                  "costCenter",
+                  "systemsInvolved",
+                  "estimatedHoursSaved",
+                  "riskNotes"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": [],
+          "x-phase": "p2"
+        },
+        "governance.intake.gateStage": {
+          "type": "object",
+          "description": "If set, a Blueprint cannot pass this stage until its intake is accepted. null = intake does not gate. P2.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "enum": [
+                    "decompose",
+                    "design",
+                    "build_handoff"
+                  ]
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Locked only",
+          "x-default": null,
+          "x-phase": "p2"
+        },
+        "governance.templates.required": {
+          "type": "object",
+          "description": "New Blueprints must start from an org template. P2: hidden until built.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Locked only",
+          "x-default": false,
+          "x-phase": "p2"
+        },
+        "governance.templates.allowPersonal": {
+          "type": "object",
+          "description": "Users may save their own templates. P2.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Locked only",
+          "x-default": true,
+          "x-phase": "p2"
+        },
+        "governance.auditLog.clientReportedUsage": {
+          "type": "object",
+          "description": "Audit data, not telemetry. Direct and local connections never touch our gateway. When 'metadata', the client reports connection type, model key, tokens and time (never content) to the org audit log, tied to the user. Honest clients only; the product says so.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "off",
+                "metadata"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": "off",
+          "x-phase": "launch"
+        },
+        "governance.orgRules": {
+          "type": "object",
+          "description": "Declarative org rules over Blueprint and Step, for example 'payroll needs a human_checkpoint'. The engine evaluates them; no code runs. The org-rule editor is P2, so the setting is hidden and inert until then (the engine's orgRules input stays empty).",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/orgRule"
+              },
+              "maxItems": 200
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Locked only",
+          "x-default": [],
+          "x-phase": "p2",
+          "x-tierBounds": {
+            "team": {
+              "maxItems": 20,
+              "source": "template"
+            }
+          }
+        },
+        "governance.dataDomains": {
+          "type": "object",
+          "description": "Org vocabulary (payroll, customer PII) that rules key on. Matched by keyword and system, not by an LLM. Hidden and inert with the org-rule editor (P2).",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/dataDomain"
+              },
+              "maxItems": 100
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Governance",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Locked only",
+          "x-default": [],
+          "x-phase": "p2"
+        },
+        "org.tier": {
+          "type": "object",
+          "description": "Signed fact so the client knows which controls exist. The gateway and portal are authoritative; the client only displays. Settings below their minimum tier are inert (ignored by clients and servers). Individual covers both Free and Paid; the plan (free, individual, team, enterprise) is a separate fact in the entitlement token, not in this bundle (R1).",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "enum": [
+                "individual",
+                "team",
+                "enterprise"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Org environment and policy mechanics",
+          "x-minTier": "individual",
+          "x-enforcedAt": "gateway",
+          "x-adminLock": "Locked only",
+          "x-default": "individual",
+          "x-phase": "launch"
+        },
+        "environment.profiles": {
+          "type": "object",
+          "description": "Permitted and forbidden tools by toolId and rungId, preferred tools, installed software, OS, network and API availability, who runs automations. One bundle per org at v1: a user whose groups match several profiles gets the first in array order.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/environmentProfile"
+              },
+              "maxItems": 50
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Org environment and policy mechanics",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Locked only",
+          "x-default": [],
+          "x-phase": "launch",
+          "x-tierBounds": {
+            "team": {
+              "maxItems": 1
+            }
+          }
+        },
+        "environment.defaultProfileId": {
+          "type": "object",
+          "description": "Profile used when a Blueprint has no environmentProfileRef and no profile matches the user's groups.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/slug"
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Org environment and policy mechanics",
+          "x-minTier": "team",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Locked only",
+          "x-default": null,
+          "x-phase": "launch"
+        },
+        "environment.userMayDeclareSoftware": {
+          "type": "object",
+          "description": "Users may add software they have to their local view of the profile. Forbidden tools stay forbidden.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Org environment and policy mechanics",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": true,
+          "x-phase": "launch"
+        },
+        "environment.customTools": {
+          "type": "object",
+          "description": "Org-owned tools (in-house connectors, script libraries) merged into the catalog for this org. Same shape as ToolCatalogEntry, including the extension fields; absent dataFlow means vendor_cloud and absent unattendedSupport means no.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/orgToolEntry"
+              },
+              "maxItems": 200
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Org environment and policy mechanics",
+          "x-minTier": "enterprise",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Locked only",
+          "x-default": [],
+          "x-phase": "launch"
+        },
+        "policy.onExpiry": {
+          "type": "object",
+          "description": "After expiresAt with no refresh: no_llm = deterministic engine and local editing only (the default, S8); last_known_good = keep enforcing the cached bundle; read_only = view only.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked"
+              ]
+            },
+            "value": {
+              "enum": [
+                "no_llm",
+                "last_known_good",
+                "read_only"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "Org environment and policy mechanics",
+          "x-minTier": "team",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Locked only",
+          "x-default": "no_llm",
+          "x-phase": "launch"
+        },
+        "prefs.coachingStyle": {
+          "type": "object",
+          "description": "guided asks one question at a time; direct states the recommendation first then the reasoning.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "guided",
+                "balanced",
+                "direct"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Default only",
+          "x-default": "guided",
+          "x-phase": "launch"
+        },
+        "prefs.verbosity": {
+          "type": "object",
+          "description": "Length of explanations. Never changes what the engine decides.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "concise",
+                "standard",
+                "detailed"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Default only",
+          "x-default": "standard",
+          "x-phase": "launch"
+        },
+        "prefs.skillLevel": {
+          "type": "object",
+          "description": "Adjusts explanation depth and which catalog entries are shown as within reach. The scale is none, basic, intermediate, advanced everywhere; the UI shows basic as Beginner.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "none",
+                "basic",
+                "intermediate",
+                "advanced"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Default only",
+          "x-default": "basic",
+          "x-phase": "launch"
+        },
+        "prefs.preferredModel": {
+          "type": "object",
+          "description": "The model picker's choice (modelId is a namespaced model key). Admin can lock it to one model. Must pass allow list, certification floor and sensitivity rules.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/preferredModel"
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Yes",
+          "x-default": null,
+          "x-phase": "launch"
+        },
+        "prefs.showEngineTrace": {
+          "type": "object",
+          "description": "Expand the rule trace behind each recommendation by default.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Default only",
+          "x-default": false,
+          "x-phase": "launch"
+        },
+        "prefs.alerts.events": {
+          "type": "object",
+          "description": "Which events raise a toast or email. In-app banners for a changed lock and for an expired policy always show.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "spend_threshold",
+                  "approval_decision",
+                  "review_requested",
+                  "policy_updated",
+                  "policy_expiring",
+                  "model_certification_changed"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Default only",
+          "x-default": [
+            "spend_threshold",
+            "approval_decision",
+            "review_requested",
+            "policy_updated",
+            "policy_expiring",
+            "model_certification_changed"
+          ],
+          "x-phase": "launch"
+        },
+        "prefs.alerts.channels": {
+          "type": "object",
+          "description": "Where alerts appear. Email is sent by the server and needs an org or personal account.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "in_app",
+                  "windows_toast",
+                  "email"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "both",
+          "x-adminLock": "Default only",
+          "x-default": [
+            "in_app",
+            "windows_toast"
+          ],
+          "x-phase": "launch"
+        },
+        "prefs.accessibility.reduceMotion": {
+          "type": "object",
+          "description": "Animations and transitions. system follows Windows. Accessibility needs are personal, so an admin can seed a default but never lock it. Target: WCAG 2.2 AA with keyboard and screen-reader support for the shell and the portal.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "system",
+                "on",
+                "off"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Default only",
+          "x-default": "system",
+          "x-phase": "launch"
+        },
+        "prefs.accessibility.highContrast": {
+          "type": "object",
+          "description": "High-contrast theme. system follows Windows contrast themes. Default only.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "system",
+                "on",
+                "off"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Default only",
+          "x-default": "system",
+          "x-phase": "launch"
+        },
+        "prefs.accessibility.textScalePercent": {
+          "type": "object",
+          "description": "Text size as a percentage of the Windows setting. Layouts must hold at 200 percent without loss of content. Default only.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 200
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Default only",
+          "x-default": 100,
+          "x-phase": "launch"
+        },
+        "prefs.accessibility.screenReaderMode": {
+          "type": "object",
+          "description": "on = every confirmation chip, engine result and warning is also announced as text, tables get row summaries, and no cue relies on motion or color alone. system detects a running screen reader. Default only.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "system",
+                "on",
+                "off"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Default only",
+          "x-default": "system",
+          "x-phase": "launch"
+        },
+        "prefs.locale.uiLanguage": {
+          "type": "object",
+          "description": "Interface language. English only in v1; strings are locale-safe (no sentence concatenation, plural-aware) so more languages need no schema change. Default only.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "en"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Default only",
+          "x-default": "en",
+          "x-phase": "launch"
+        },
+        "prefs.locale.replyLanguage": {
+          "type": "object",
+          "description": "Language of model replies. auto = the language the user writes in, best effort and not certified per language. An org may lock one language (for example en for reviewers). Engine rationale text stays in the interface language.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "locked",
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "type": "string",
+              "maxLength": 35,
+              "pattern": "^(auto|[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3})$"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Yes",
+          "x-default": "auto",
+          "x-phase": "launch"
+        },
+        "prefs.locale.formats": {
+          "type": "object",
+          "description": "Date, time and number display. system follows Windows regional settings; iso uses unambiguous formats. Currency is USD only in v1. Default only.",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "default",
+                "user_choice"
+              ]
+            },
+            "value": {
+              "enum": [
+                "system",
+                "iso"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/$defs/stateValueRule"
+            }
+          ],
+          "x-group": "User preferences",
+          "x-minTier": "individual",
+          "x-enforcedAt": "client",
+          "x-adminLock": "Default only",
+          "x-default": "system",
+          "x-phase": "launch"
+        }
+      },
+      "patternProperties": {
+        "^x-[a-z0-9.-]+$": {
+          "$ref": "#/$defs/extensionSetting"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/unknownSetting"
+      },
+      "propertyNames": {
+        "maxLength": 120,
+        "pattern": "^(x-[a-z0-9.-]+|[a-z][A-Za-z0-9]*(\\.[A-Za-z0-9]+)*)$"
+      },
+      "description": "Absent key = catalog default with user control (or locked at the catalog default for 'Locked only' keys). Extension keys start with 'x-'."
+    }
+  },
+  "$defs": {
+    "toolId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z0-9][a-z0-9_]*$",
+      "maxLength": 80,
+      "description": "Tool id <namespace>.<name>: exactly one dot, a digit is allowed after the dot, no hyphen. One definition shared with blueprint.schema.json (contract v2 section 4). Publish-time check: every toolId must exist in the catalog or in environment.customTools."
+    },
+    "orgToolId": {
+      "type": "string",
+      "pattern": "^org\\.[a-z0-9][a-z0-9_]{0,59}$",
+      "description": "Org tool id (environment.customTools[]). A subset of toolId."
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{1,62}$",
+      "description": "Lower-case slug for ids the org chooses. No dots: the dot is the toolId separator."
+    },
+    "skillLevel": {
+      "enum": [
+        "none",
+        "basic",
+        "intermediate",
+        "advanced"
+      ],
+      "description": "The one skill scale (contract v2 section 4). UI labels are separate copy."
+    },
+    "rungId": {
+      "enum": [
+        "eliminate",
+        "builtin_feature",
+        "api_connector",
+        "script",
+        "ui_automation",
+        "parser_ocr_ml",
+        "llm_node",
+        "human_checkpoint",
+        "llm_agent"
+      ],
+      "description": "Tool ladder. Array order is the ladder order; human_checkpoint comes before llm_agent."
+    },
+    "operationTag": {
+      "enum": [
+        "aggregate_group",
+        "answer_over_text",
+        "approve_decision",
+        "calculate",
+        "call_api",
+        "classify_text",
+        "event_trigger",
+        "exception_review",
+        "extract_entities_freetext",
+        "extract_fields_document",
+        "extract_fields_pattern",
+        "file_operations",
+        "filter_sort_dedupe",
+        "format_convert",
+        "generate_report",
+        "generate_text",
+        "judge_quality",
+        "lookup_join",
+        "ocr_text",
+        "physical_action",
+        "plan_open_ended",
+        "query_database",
+        "read_from_ui",
+        "rename_files",
+        "route_by_rule",
+        "route_message_by_header",
+        "schedule_trigger",
+        "scrape_web",
+        "send_message",
+        "summarize_text",
+        "sync_records",
+        "transfer_data",
+        "transform_text_pattern",
+        "translate_text",
+        "validate_rules",
+        "write_to_ui"
+      ],
+      "description": "What a step does to its data. Catalog capabilities[] use the same 36 tags."
+    },
+    "sensitivityClass": {
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "restricted"
+      ]
+    },
+    "stage": {
+      "enum": [
+        "triage",
+        "capture",
+        "decompose",
+        "classify",
+        "environment_fit",
+        "design",
+        "build_handoff",
+        "test_plan",
+        "deploy_monitor"
+      ]
+    },
+    "certification": {
+      "enum": [
+        "certified",
+        "works",
+        "experimental",
+        "uncertified"
+      ]
+    },
+    "role": {
+      "enum": [
+        "admin",
+        "coe_reviewer",
+        "builder",
+        "viewer"
+      ]
+    },
+    "gate": {
+      "enum": [
+        "build_handoff",
+        "handoff_brief",
+        "automate_flow_draft",
+        "export",
+        "automate_apply",
+        "automate_test_run"
+      ],
+      "description": "Points in the flow that a rule or the approval setting can block."
+    },
+    "exportKind": {
+      "enum": [
+        "handoff_brief",
+        "process_document",
+        "review_packet",
+        "blueprint_json",
+        "automate_flow_draft"
+      ],
+      "description": "ExportRecord.kind (contract v2 section 5)."
+    },
+    "toolDataFlow": {
+      "enum": [
+        "local",
+        "tenant",
+        "vendor_cloud",
+        "ai_cloud"
+      ],
+      "description": "Data-flow class, most to least contained: local, tenant, vendor_cloud, ai_cloud."
+    },
+    "connectionId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+      "description": "Connection id. The built-in managed connection is 'managed'. One definition shared with policy.schema.json (contract v2 section 4)."
+    },
+    "connectionType": {
+      "enum": [
+        "managed",
+        "byok_openrouter",
+        "byok_provider",
+        "custom_openai_compat",
+        "local"
+      ]
+    },
+    "serverKind": {
+      "enum": [
+        "ollama",
+        "lmstudio",
+        "foundry_local",
+        "llamacpp",
+        "vllm",
+        "litellm",
+        "azure_openai",
+        "bedrock",
+        "vertex_openai",
+        "anthropic_compat",
+        "openai",
+        "openrouter",
+        "generic"
+      ],
+      "description": "Selects the wire quirks profile (context probe, tools handling, auth header name). ASSUMPTION: the header name for authScheme api_key_header is 'api-key' for azure_openai and 'x-api-key' otherwise; it is derived from serverKind, not stored."
+    },
+    "authScheme": {
+      "enum": [
+        "none",
+        "bearer",
+        "api_key_header",
+        "token_provider"
+      ],
+      "description": "none; bearer (Authorization: Bearer); api_key_header; token_provider (the client obtains a token for the endpoint through the signed-in identity, no stored key)."
+    },
+    "credentialMode": {
+      "enum": [
+        "user_supplied",
+        "integrated_oauth",
+        "org_vault",
+        "none"
+      ],
+      "description": "user_supplied: the user's key in Credential Manager/DPAPI. integrated_oauth: token through the signed-in identity. org_vault: key leased from the org vault (Enterprise, P2). none: no credential."
+    },
+    "modelIdKind": {
+      "enum": [
+        "model",
+        "deployment"
+      ],
+      "description": "model: the id is a model name. deployment: the id is a deployment name (Azure OpenAI)."
+    },
+    "modelKey": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}/[A-Za-z0-9][A-Za-z0-9._:@+~/-]{0,127}$",
+      "maxLength": 200,
+      "description": "Namespaced model key <namespace>/<id>. managed and byok_openrouter use the OpenRouter id as is; byok_provider <providerId>/<id>; custom_openai_compat custom/<id> (deployment name for Azure); local local/<id>. One convention for Connection.allowedModels[], models.allowlist and prefs.preferredModel.modelId (contract v2 section 4)."
+    },
+    "modelKeyGlob": {
+      "type": "string",
+      "pattern": "^[a-z0-9*][a-z0-9._*-]{0,63}/[A-Za-z0-9*][A-Za-z0-9._:@+~*/-]{0,127}$",
+      "maxLength": 200,
+      "description": "A model key where '*' matches any run of characters. Same namespaces as modelKey."
+    },
+    "httpsEndpoint": {
+      "type": "string",
+      "pattern": "^https://[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(:[0-9]{1,5})?(/[^\\s]*)?$",
+      "maxLength": 300,
+      "description": "https URL without user info."
+    },
+    "loopbackEndpoint": {
+      "type": "string",
+      "pattern": "^https?://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]{1,5})?(/[^\\s]*)?$",
+      "maxLength": 300,
+      "description": "http or https on localhost, 127.0.0.1 or [::1] only. Plain http is allowed only here."
+    },
+    "credentialRef": {
+      "type": "string",
+      "pattern": "^(wincred|dpapi|orgvault):[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$",
+      "maxLength": 200,
+      "description": "Local reference to a credential store entry (wincred, dpapi or orgvault), never the secret. ASSUMPTION: the prefix format is this schema's choice; other documents treat it as opaque."
+    },
+    "extraHeaders": {
+      "type": "object",
+      "maxProperties": 20,
+      "propertyNames": {
+        "allOf": [
+          {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,63}$"
+          },
+          {
+            "not": {
+              "pattern": "([Aa][Uu][Tt][Hh]|[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww]|[Cc][Oo][Oo][Kk][Ii][Ee]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee])"
+            }
+          }
+        ]
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 256,
+        "pattern": "^[\\x20-\\x7E]*$",
+        "not": {
+          "pattern": "^([Bb][Ee][Aa][Rr][Ee][Rr]|[Bb][Aa][Ss][Ii][Cc]) "
+        }
+      },
+      "description": "Non-secret request headers (for example OpenRouter attribution or an API version). Header names that contain auth, key, token, secret, passw, cookie, credential or signature are refused, and so are values that start with Bearer or Basic: a credential never goes here."
+    },
+    "hostGlob": {
+      "type": "string",
+      "pattern": "^(\\*\\.)?[a-z0-9.-]{1,253}(:[0-9]{1,5})?$",
+      "description": "Host name, optional leading '*.' wildcard, optional port."
+    },
+    "stateValueRule": {
+      "description": "locked and default carry a value. user_choice carries none (the user's own value or the catalog default applies).",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "locked",
+                  "default"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "user_choice"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "profileSystem": {
+      "type": "object",
+      "required": [
+        "systemId",
+        "name",
+        "api"
+      ],
+      "additionalProperties": false,
+      "description": "A business system the org's processes touch. Feeds the engine's 'API available vs UI-only' and credential inputs.",
+      "properties": {
+        "systemId": {
+          "$ref": "#/$defs/slug"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "api": {
+          "enum": [
+            "available",
+            "restricted",
+            "unavailable",
+            "unknown"
+          ],
+          "description": "restricted = exists but needs a ticket, approval or licence to use."
+        },
+        "apiKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "rest",
+              "soap",
+              "odbc",
+              "graphql",
+              "sdk",
+              "file_drop",
+              "email"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "uiKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "web",
+              "windows_desktop",
+              "terminal_emulator",
+              "remote_desktop",
+              "mobile_only"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "authModel": {
+          "enum": [
+            "sso",
+            "service_account",
+            "shared_login",
+            "mfa_interactive",
+            "none",
+            "unknown"
+          ],
+          "description": "mfa_interactive blocks unattended UI automation; the engine treats it as attended-only."
+        },
+        "isProduction": {
+          "type": "boolean",
+          "description": "Used by automate.testRuns.blockProductionSystems."
+        },
+        "domainIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/slug"
+          },
+          "uniqueItems": true,
+          "description": "governance.dataDomains ids that this system holds."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 300
+        }
+      }
+    },
+    "automationRunner": {
+      "type": "object",
+      "required": [
+        "kind",
+        "platform",
+        "credentialModel"
+      ],
+      "additionalProperties": false,
+      "description": "Who or what runs finished automations. Answers 'who runs automations' for the engine.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "end_user_attended",
+            "shared_attended_workstation",
+            "unattended_vm",
+            "server_scheduler"
+          ]
+        },
+        "platform": {
+          "enum": [
+            "windows",
+            "linux",
+            "cloud"
+          ]
+        },
+        "credentialModel": {
+          "enum": [
+            "user_session",
+            "service_account",
+            "vaulted_secret",
+            "none"
+          ]
+        },
+        "unattendedAllowed": {
+          "type": "boolean"
+        },
+        "supportOwner": {
+          "enum": [
+            "builder",
+            "it_operations",
+            "coe"
+          ]
+        }
+      }
+    },
+    "softwareItem": {
+      "type": "object",
+      "required": [
+        "softwareId",
+        "name",
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "softwareId": {
+          "$ref": "#/$defs/slug"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "status": {
+          "enum": [
+            "installed",
+            "licensed_not_deployed",
+            "planned",
+            "prohibited"
+          ],
+          "description": "prohibited adds the software's providesToolIds to tools.forbiddenToolIds in the engine projection (ASSUMPTION, rules-engine.md section 3.2)."
+        },
+        "providesToolIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolId"
+          },
+          "uniqueItems": true,
+          "description": "Catalog or org tools that this software makes available."
+        }
+      }
+    },
+    "orgToolEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "toolId",
+        "name",
+        "rungId",
+        "capabilities",
+        "constraints",
+        "skillLevel",
+        "requiresInstall",
+        "platforms"
+      ],
+      "description": "Org-owned tool in environment.customTools[]: the ToolCatalogEntry shape of blueprint.schema.json (the 8 contract fields plus the 12 optional extension fields; the shared properties are byte-identical). When an extension field is absent the engine assumes dataFlow = vendor_cloud and unattendedSupport = no (fail safe).",
+      "properties": {
+        "toolId": {
+          "$ref": "#/$defs/orgToolId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "rungId": {
+          "$ref": "#/$defs/rungId"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operationTag"
+          },
+          "uniqueItems": true
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 400
+          }
+        },
+        "skillLevel": {
+          "$ref": "#/$defs/skillLevel"
+        },
+        "requiresInstall": {
+          "type": "boolean"
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "windows",
+              "macos",
+              "linux",
+              "cloud"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "systemKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "web_app",
+              "desktop_app",
+              "terminal_or_mainframe",
+              "spreadsheet_or_file",
+              "email_or_calendar",
+              "database",
+              "api_service",
+              "paper_or_phone"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "System kinds the tool can work with (hard predicate T-SYS). Empty or absent means the tool does not depend on a system kind and T-SYS passes."
+        },
+        "accessModes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "builtin",
+              "connector",
+              "api",
+              "scriptable",
+              "file_or_db",
+              "http_html",
+              "ui",
+              "none"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "Access modes the tool uses to reach a system (hard predicate T-ACCESS). Empty or absent means the tool does not depend on an access mode and T-ACCESS passes."
+        },
+        "unattendedSupport": {
+          "enum": [
+            "yes",
+            "needs_host",
+            "no"
+          ]
+        },
+        "dataFlow": {
+          "enum": [
+            "local",
+            "tenant",
+            "vendor_cloud",
+            "ai_cloud"
+          ]
+        },
+        "connectionTypes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "managed",
+              "byok_openrouter",
+              "byok_provider",
+              "custom_openai_compat",
+              "local"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "language": {
+          "enum": [
+            "powershell",
+            "python",
+            "vba",
+            "javascript",
+            "sql",
+            "csharp",
+            "bash"
+          ]
+        },
+        "hostToolIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolId"
+          },
+          "uniqueItems": true
+        },
+        "locatorKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "automation_id",
+              "name_or_control_type",
+              "dom_selector",
+              "image_or_coordinates"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "requiresTrainingData": {
+          "type": "boolean"
+        },
+        "maxInputVariability": {
+          "enum": [
+            "fixed_layout",
+            "few_templates",
+            "many_templates",
+            "unbounded"
+          ]
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "maxItemsPerRun": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxInputSize": {
+              "enum": [
+                "small",
+                "medium",
+                "large"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "handoff": {
+          "enum": [
+            "native_in_automate",
+            "script_file",
+            "flow_spec",
+            "formula_snippet",
+            "config_instructions",
+            "spec_only",
+            "none"
+          ]
+        }
+      }
+    },
+    "environmentProfile": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "os"
+      ],
+      "additionalProperties": false,
+      "description": "Org environment profile. Constrains the rules engine at the environment_fit stage. Blueprint.environmentProfileRef holds this id. For lists, omitted or null = unrestricted; [] = nothing. One bundle per org at v1: groupIds is the only group-aware field. A user whose groups match several profiles gets the first matching profile in array order; a user who matches none gets environment.defaultProfileId.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "groupIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "uniqueItems": true,
+          "maxItems": 50,
+          "description": "Enterprise: ids of portal-managed groups whose members default to this profile (ASSUMPTION, R8). Directory groups arrive with SSO (P2). Tiebreak: first profile in array order."
+        },
+        "scope": {
+          "type": "object",
+          "x-reserved": true,
+          "description": "Reserved for group-scoped policy. Optional; clients ignore it at v1 and must preserve it."
+        },
+        "preferredToolIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolId"
+          },
+          "uniqueItems": true,
+          "maxItems": 40,
+          "description": "Org-preferred tools, most preferred first. Used only by the engine's tie-breaker TB-0 among tools that already fit at the same rung; never overrides the ladder or a hard predicate."
+        },
+        "os": {
+          "type": "object",
+          "required": [
+            "family"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "family": {
+              "enum": [
+                "windows"
+              ],
+              "description": "ASSUMPTION: Windows only at launch (matches the product)."
+            },
+            "versions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "uniqueItems": true,
+              "maxItems": 20
+            },
+            "managedDevices": {
+              "type": "boolean",
+              "description": "Devices are under MDM or group policy."
+            },
+            "userHasLocalAdmin": {
+              "enum": [
+                "none",
+                "some",
+                "all"
+              ]
+            },
+            "softwareInstallPolicy": {
+              "enum": [
+                "free",
+                "request_approval",
+                "locked_down"
+              ],
+              "description": "Drives how hard the engine penalises tools with requiresInstall=true."
+            }
+          }
+        },
+        "scripting": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allowed": {
+              "type": "boolean"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "powershell",
+                  "python",
+                  "vba",
+                  "javascript",
+                  "csharp",
+                  "sql",
+                  "bash"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "powershellExecutionPolicy": {
+              "enum": [
+                "restricted",
+                "allsigned",
+                "remotesigned",
+                "unrestricted",
+                "bypass",
+                "undefined",
+                "unknown"
+              ]
+            },
+            "signedScriptsOnly": {
+              "type": "boolean"
+            },
+            "unattendedRequiresReview": {
+              "type": "boolean"
+            }
+          }
+        },
+        "software": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/softwareItem"
+          },
+          "maxItems": 500
+        },
+        "tools": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "permittedToolIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/toolId"
+              },
+              "uniqueItems": true,
+              "maxItems": 500
+            },
+            "forbiddenToolIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/toolId"
+              },
+              "uniqueItems": true,
+              "maxItems": 500
+            },
+            "permittedRungIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/rungId"
+              },
+              "uniqueItems": true
+            },
+            "forbiddenRungIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/rungId"
+              },
+              "uniqueItems": true
+            }
+          },
+          "description": "Engine semantics: forbidden always wins over permitted. A tool is out if its rung is forbidden. If a permitted list is present, anything not on it is out."
+        },
+        "network": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "internetAccess": {
+              "enum": [
+                "full",
+                "proxy_only",
+                "allowlist_only",
+                "air_gapped"
+              ]
+            },
+            "egressAllowlist": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/hostGlob"
+              },
+              "uniqueItems": true,
+              "maxItems": 200
+            },
+            "llmEndpointsReachable": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/connectionType"
+              },
+              "uniqueItems": true,
+              "description": "Connection types that the network actually allows; the client hides the rest."
+            }
+          }
+        },
+        "systems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/profileSystem"
+          },
+          "maxItems": 300
+        },
+        "automationRunners": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/automationRunner"
+          },
+          "maxItems": 20
+        }
+      }
+    },
+    "dataDomain": {
+      "type": "object",
+      "required": [
+        "id",
+        "label"
+      ],
+      "additionalProperties": false,
+      "description": "Org-defined data domain (payroll, customer PII). The policy layer derives step.derived.domains[] (a virtual field, never stored in the Blueprint) from keyword hits in step text, systems listed in systemIds, and user confirmation. Deterministic; no LLM.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 64
+          },
+          "uniqueItems": true,
+          "maxItems": 50,
+          "description": "Case-insensitive whole-word match."
+        },
+        "systemIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/slug"
+          },
+          "uniqueItems": true,
+          "maxItems": 50
+        },
+        "sensitivityFloor": {
+          "$ref": "#/$defs/sensitivityClass"
+        }
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "required": [
+        "field",
+        "op"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string",
+          "maxLength": 120,
+          "pattern": "^(blueprint|step|exception)(\\.[A-Za-z][A-Za-z0-9]*(\\[\\*?\\])?)+$",
+          "description": "Path into the Blueprint, Step or Exception. '[]' or '[*]' = any element. Publish-time check: the path must exist in the Blueprint field registry or in x-virtualFields of blueprint.schema.json (for example step.derived.domains[])."
+        },
+        "op": {
+          "enum": [
+            "eq",
+            "ne",
+            "in",
+            "nin",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "contains",
+            "containsAny",
+            "containsAll",
+            "startsWith",
+            "exists",
+            "notExists",
+            "isEmpty"
+          ],
+          "description": "No regex and no code. Text matching is case-insensitive whole-word via contains/containsAny."
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": [
+                "string",
+                "number",
+                "boolean",
+                "null"
+              ]
+            },
+            {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "enum": [
+                  "exists",
+                  "notExists",
+                  "isEmpty"
+                ]
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "value"
+            ]
+          }
+        }
+      ]
+    },
+    "predicate": {
+      "description": "Declarative predicate. Engine limits (not expressible here): depth <= 6, <= 50 nodes. No functions, no loops.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "all"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "all": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/predicate"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "any"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "any": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/predicate"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "not"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "not": {
+              "$ref": "#/$defs/predicate"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/comparison"
+        }
+      ]
+    },
+    "ruleAction": {
+      "description": "What a matching rule does. Constraints (forbid_*, require_attended, require_adjacent_rung) shape the recommendation search. Obligations (the rest) are checked afterwards; an unmet obligation is a violation at the rule's severity.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "rungIds"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "forbid_rungs"
+            },
+            "rungIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/rungId"
+              },
+              "uniqueItems": true,
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "toolIds"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "forbid_tools"
+            },
+            "toolIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/toolId"
+              },
+              "uniqueItems": true,
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "rungId"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "require_adjacent_rung"
+            },
+            "rungId": {
+              "$ref": "#/$defs/rungId"
+            },
+            "placement": {
+              "enum": [
+                "before",
+                "after",
+                "either"
+              ],
+              "default": "either"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "require_attended"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "path"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "require_field"
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^(blueprint|step|exception)(\\.[A-Za-z][A-Za-z0-9]*)+$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "role"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "require_approval"
+            },
+            "role": {
+              "enum": [
+                "coe_reviewer"
+              ],
+              "description": "Only a CoE Reviewer approves, and never their own Blueprint (contract decision 9). One value today; the field is kept so a later role can be added without a schema break."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "minimum"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "raise_sensitivity"
+            },
+            "minimum": {
+              "$ref": "#/$defs/sensitivityClass"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gates"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "block_gate"
+            },
+            "gates": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/gate"
+              },
+              "uniqueItems": true,
+              "minItems": 1
+            }
+          }
+        }
+      ]
+    },
+    "orgRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "source",
+        "severity",
+        "appliesTo",
+        "when",
+        "then",
+        "message"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "source": {
+          "enum": [
+            "template",
+            "custom"
+          ],
+          "description": "template = instance of a library template (Team and up). custom = free predicate (Enterprise). The tier gate is checked at publish time."
+        },
+        "templateId": {
+          "$ref": "#/$defs/slug"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warn",
+            "block"
+          ],
+          "description": "Severity of an unmet obligation. block stops the gates in any block_gate action and the approval transition."
+        },
+        "appliesTo": {
+          "enum": [
+            "blueprint",
+            "step",
+            "exception"
+          ],
+          "description": "Evaluation unit. A step rule may read blueprint.* fields as context."
+        },
+        "stages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stage"
+          },
+          "uniqueItems": true,
+          "description": "Stages at which the rule is evaluated. Omitted = all stages."
+        },
+        "when": {
+          "$ref": "#/$defs/predicate"
+        },
+        "then": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/ruleAction"
+          }
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300,
+          "description": "Plain-language text shown to the user. Allowed placeholders: {step.name}, {blueprint.title}."
+        },
+        "waiver": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "allowed"
+          ],
+          "properties": {
+            "allowed": {
+              "type": "boolean"
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "coe_reviewer",
+                  "admin"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "description": "Who may waive a violation. A waiver needs a reason and is written to Blueprint.decisions[] and the audit log (action org_rule_waived). A waiver is a recorded decision, not the `approved` status."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "template"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "required": [
+              "templateId"
+            ]
+          }
+        }
+      ]
+    },
+    "sensitivityClassRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "llmConnectionTypes",
+        "llmContentMode",
+        "minModelCertification",
+        "requireZeroRetentionProvider",
+        "previewBeforeSend",
+        "sync",
+        "approvalMetadataSync",
+        "exportAllowed",
+        "requireApprovalBeforeHandoff"
+      ],
+      "description": "What a Blueprint of this sensitivity class may do. The client enforces; the gateway and sync server enforce what they can see.",
+      "properties": {
+        "llmConnectionTypes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/connectionType"
+          },
+          "uniqueItems": true,
+          "description": "Connection types that may carry this class. [] with llmContentMode 'none' = deterministic-engine-only mode (wizard, forms, rules, exports; nothing goes to a model)."
+        },
+        "llmContentMode": {
+          "enum": [
+            "full",
+            "redacted",
+            "none"
+          ],
+          "description": "full = send what the coaching turn needs; redacted = all redaction patterns forced to 'redact'; none = no model call may include Blueprint content, so llm_node and llm_agent are unavailable (same enum as the engine's projection)."
+        },
+        "minModelCertification": {
+          "$ref": "#/$defs/certification"
+        },
+        "requireZeroRetentionProvider": {
+          "type": "boolean",
+          "description": "VERIFY: provider-side flags differ per route. managed always forces provider data-collection deny regardless of this flag."
+        },
+        "previewBeforeSend": {
+          "type": "boolean",
+          "description": "Show the user exactly what will be sent before each model turn."
+        },
+        "sync": {
+          "enum": [
+            "on",
+            "opt_in",
+            "forbidden"
+          ],
+          "description": "Full Blueprint backup/sync for this class. on = backed up by default. opt_in = stays on the device (shown as 'Local only, not backed up') until the owner or an admin opts that Blueprint in with one click. forbidden = never leaves the device. Capability, not a guarantee (contract decision 8)."
+        },
+        "approvalMetadataSync": {
+          "type": "boolean",
+          "description": "Approval metadata (contentHash, status, signer; never content) may sync for any class, so the AutoMate adapter can verify a server-signed approval for a local-only Blueprint."
+        },
+        "exportAllowed": {
+          "type": "boolean",
+          "description": "File exports (md, json, pdf, docx, csv) and the file-based AutoMate draft import. Narrowed further by data.exports.allowedKinds. A local export never uploads anything (R2), so the restricted default is true; false is a stricter admin choice that blocks every kind for the class."
+        },
+        "requireApprovalBeforeHandoff": {
+          "type": "boolean",
+          "description": "A Blueprint of this class needs a met approval gate (approved by a CoE Reviewer, or a SelfAttestation where R7 allows it) before handoff_brief, automate_flow_draft and automate_apply, in addition to governance.approval.requiredBefore."
+        },
+        "toolDataFlowCeiling": {
+          "enum": [
+            "local",
+            "tenant",
+            "vendor_cloud",
+            "ai_cloud"
+          ],
+          "description": "Highest data-flow class a non-model tool may have for this class (engine T-FLOW). Omitted = engine defaults: public and internal ai_cloud, confidential tenant, restricted local. For restricted the value is capped at tenant."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "llmContentMode": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "llmContentMode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "llmConnectionTypes": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "requireApprovalBeforeHandoff": {
+                "const": true
+              }
+            },
+            "required": [
+              "requireApprovalBeforeHandoff"
+            ]
+          },
+          "then": {
+            "properties": {
+              "approvalMetadataSync": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "redactionPattern": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "kind",
+        "action"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "kind": {
+          "enum": [
+            "regex",
+            "keywords"
+          ]
+        },
+        "pattern": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "Linear-time regex subset: no backreferences, no lookaround. VERIFY: the client uses a non-backtracking engine (for example .NET RegexOptions.NonBacktracking)."
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 64
+          },
+          "uniqueItems": true,
+          "maxItems": 200
+        },
+        "caseInsensitive": {
+          "type": "boolean",
+          "default": true
+        },
+        "action": {
+          "enum": [
+            "redact",
+            "block",
+            "warn"
+          ]
+        },
+        "appliesTo": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "prompt",
+              "transcript",
+              "export",
+              "diagnostics"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "regex"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "pattern"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "keywords"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "keywords"
+            ]
+          }
+        }
+      ]
+    },
+    "aiFlowsByMode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "off",
+        "lite_only",
+        "full"
+      ],
+      "description": "Per coach.aiMode value, which optional flows are allowed: rescue (rescue my failed automation) and second_opinion (critique with a cross-model check, which obeys data.sensitivityRules). In mode off nothing is allowed because no model traffic exists.",
+      "properties": {
+        "off": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "rescue",
+              "second_opinion"
+            ]
+          },
+          "maxItems": 0
+        },
+        "lite_only": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "rescue",
+              "second_opinion"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "full": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "rescue",
+              "second_opinion"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "orgConnection": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "label",
+        "serverKind",
+        "authScheme",
+        "credentialMode"
+      ],
+      "properties": {
+        "id": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/connectionId"
+            },
+            {
+              "not": {
+                "const": "managed"
+              }
+            }
+          ]
+        },
+        "type": {
+          "enum": [
+            "byok_openrouter",
+            "byok_provider",
+            "custom_openai_compat"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "providerId": {
+          "allOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{1,62}$"
+            },
+            {
+              "not": {
+                "enum": [
+                  "local",
+                  "custom",
+                  "openrouter",
+                  "managed"
+                ]
+              }
+            }
+          ],
+          "description": "byok_provider only: the <providerId> namespace of its model keys. ASSUMPTION: an additive field beyond the contract's list, because the namespace cannot be derived otherwise."
+        },
+        "endpoint": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "https. Plain http only for a loopback local endpoint. Required for local and custom_openai_compat; optional for the others (the serverKind default applies)."
+        },
+        "serverKind": {
+          "$ref": "#/$defs/serverKind"
+        },
+        "authScheme": {
+          "$ref": "#/$defs/authScheme"
+        },
+        "credentialMode": {
+          "$ref": "#/$defs/credentialMode"
+        },
+        "extraHeaders": {
+          "$ref": "#/$defs/extraHeaders"
+        },
+        "modelIdKind": {
+          "$ref": "#/$defs/modelIdKind"
+        },
+        "contextWindowOverride": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1024,
+          "maximum": 10000000,
+          "description": "Tokens. Overrides the probed context window; null = use the probe. The probe is per server kind (Ollama defaults small)."
+        },
+        "allowedModels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/modelKeyGlob"
+          },
+          "uniqueItems": true,
+          "maxItems": 500,
+          "description": "Namespaced model keys or globs this connection may use. Omitted = whatever the endpoint lists, still subject to models.allowlist and models.denylist."
+        },
+        "policyRef": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/connectionId"
+            }
+          ],
+          "description": "The policy orgConnection.id this connection was provisioned from; null for a personal connection."
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "local"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "endpoint"
+            ],
+            "properties": {
+              "endpoint": {
+                "$ref": "#/$defs/loopbackEndpoint"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "custom_openai_compat"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "endpoint"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "managed",
+                  "byok_openrouter",
+                  "byok_provider",
+                  "custom_openai_compat"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "endpoint": {
+                "$ref": "#/$defs/httpsEndpoint"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "local"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "serverKind": {
+                "enum": [
+                  "ollama",
+                  "lmstudio",
+                  "foundry_local",
+                  "llamacpp",
+                  "generic"
+                ]
+              },
+              "authScheme": {
+                "enum": [
+                  "none",
+                  "bearer"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "managed"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "serverKind": {
+                "enum": [
+                  "openrouter",
+                  "generic"
+                ]
+              },
+              "authScheme": {
+                "const": "token_provider"
+              },
+              "credentialMode": {
+                "const": "integrated_oauth"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "byok_openrouter"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "serverKind": {
+                "const": "openrouter"
+              },
+              "credentialMode": {
+                "enum": [
+                  "user_supplied",
+                  "org_vault"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "byok_provider"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "providerId"
+            ],
+            "properties": {
+              "serverKind": {
+                "enum": [
+                  "openai",
+                  "anthropic_compat",
+                  "vertex_openai",
+                  "bedrock",
+                  "generic"
+                ]
+              },
+              "credentialMode": {
+                "enum": [
+                  "user_supplied",
+                  "org_vault"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "local"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "allowedModels": {
+                "items": {
+                  "pattern": "^local/"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "custom_openai_compat"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "allowedModels": {
+                "items": {
+                  "pattern": "^custom/"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "managed",
+                  "byok_openrouter"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "allowedModels": {
+                "items": {
+                  "not": {
+                    "pattern": "^(local|custom)/"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "byok_provider"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "allowedModels": {
+                "items": {
+                  "not": {
+                    "pattern": "^(local|custom|openrouter)/"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "managed",
+                  "byok_openrouter",
+                  "custom_openai_compat",
+                  "local"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "providerId"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "serverKind": {
+                "const": "azure_openai"
+              }
+            },
+            "required": [
+              "serverKind"
+            ]
+          },
+          "then": {
+            "required": [
+              "modelIdKind"
+            ],
+            "properties": {
+              "modelIdKind": {
+                "const": "deployment"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "credentialMode": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "credentialMode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "authScheme": {
+                "const": "none"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "authScheme": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "authScheme"
+            ]
+          },
+          "then": {
+            "properties": {
+              "credentialMode": {
+                "const": "none"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "credentialMode": {
+                "const": "integrated_oauth"
+              }
+            },
+            "required": [
+              "credentialMode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "authScheme": {
+                "const": "token_provider"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "authScheme": {
+                "const": "token_provider"
+              }
+            },
+            "required": [
+              "authScheme"
+            ]
+          },
+          "then": {
+            "properties": {
+              "credentialMode": {
+                "const": "integrated_oauth"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "credentialMode": {
+                "enum": [
+                  "user_supplied",
+                  "org_vault"
+                ]
+              }
+            },
+            "required": [
+              "credentialMode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "authScheme": {
+                "enum": [
+                  "bearer",
+                  "api_key_header"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "description": "Org-provisioned Connection: the contract Connection without credentialRef (generated from the same builder as connection.schema.json). The client creates the local Connection with policyRef = id and fills credentialRef after credential setup. No secret ever sits in the bundle. credentialMode org_vault is the Enterprise key vault (P2)."
+    },
+    "proxy": {
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "system",
+            "direct",
+            "custom"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(:[0-9]{1,5})?(/[^\\s]*)?$",
+          "maxLength": 300
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "custom"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "url"
+            ]
+          }
+        }
+      ]
+    },
+    "preferredModel": {
+      "type": "object",
+      "required": [
+        "connectionId",
+        "modelId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "connectionId": {
+          "$ref": "#/$defs/connectionId"
+        },
+        "modelId": {
+          "$ref": "#/$defs/modelKey",
+          "description": "Namespaced model key (contract v2 section 4)."
+        }
+      }
+    },
+    "extensionSetting": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "locked",
+            "default",
+            "user_choice"
+          ]
+        },
+        "value": {}
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/stateValueRule"
+        }
+      ],
+      "description": "An 'x-' extension setting: carried, signed, ignored by clients that do not know it."
+    },
+    "unknownSetting": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "locked",
+            "default",
+            "user_choice"
+          ]
+        },
+        "value": {}
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/stateValueRule"
+        }
+      ],
+      "description": "A key this schema revision does not know, for example one added by a newer portal. A client ignores it (and keeps it for the signature check); it must still be shaped like a setting."
+    },
+    "strictSettingKeys": {
+      "description": "Authoring profile, applied to bundle.settings by the portal and the gateway at publish: only the keys of this catalog or 'x-' keys. Clients do not apply it.",
+      "propertyNames": {
+        "anyOf": [
+          {
+            "enum": [
+              "connections.managed.enabled",
+              "connections.byokOpenrouter.enabled",
+              "connections.byokProvider.enabled",
+              "connections.customOpenaiCompat.enabled",
+              "connections.local.enabled",
+              "connections.allowPersonalKeys",
+              "connections.byokProvider.allowedProviders",
+              "connections.endpointHostAllowlist",
+              "connections.requireTls",
+              "connections.proxy",
+              "connections.orgConnections",
+              "models.allowlist",
+              "models.denylist",
+              "models.minCertification",
+              "models.adminApprovedLocal",
+              "models.adminApprovedLocalCountsAsWorks",
+              "models.requireCapabilityProbePass",
+              "models.zeroRetentionProvidersOnly",
+              "models.fallback",
+              "spend.orgMonthlyCapUsd",
+              "spend.perUserMonthlyCapUsd",
+              "spend.perSessionCapUsd",
+              "spend.maxPricePerMillionOutputTokensUsd",
+              "spend.warnAtPercent",
+              "spend.onCapReached",
+              "spend.byokEstimatedMonthlyCapUsd",
+              "spend.personalMonthlyCapUsd",
+              "data.sensitivityRules",
+              "data.minimumSensitivity",
+              "data.redaction.builtinPatterns",
+              "data.redaction.customPatterns",
+              "data.redaction.defaultAction",
+              "data.redaction.surfaces",
+              "data.redaction.reversible",
+              "data.exports.allowedKinds",
+              "retention.transcripts.storage",
+              "retention.transcripts.days",
+              "retention.localLogs.days",
+              "retention.blueprints.versionsKept",
+              "retention.blueprints.trashWindowDays",
+              "retention.auditLog.days",
+              "sync.blueprints.enabled",
+              "sync.transcripts.enabled",
+              "telemetry.crashReports",
+              "telemetry.usageAnalytics",
+              "coach.aiMode",
+              "coach.aiFlows.allowedByMode",
+              "coach.llmOverride.mode",
+              "coach.llmOverride.requireJustificationCard",
+              "coach.llmOverride.approverRole",
+              "coach.llmAgent.mode",
+              "coach.llmNode.requireValidatorAndFallback",
+              "coach.override.mode",
+              "coach.override.reasonMinChars",
+              "coach.triageOverride.mode",
+              "automate.actions.mode",
+              "automate.actions.allowedKinds",
+              "automate.actions.maxChangesPerDiff",
+              "automate.testRuns.mode",
+              "automate.testRuns.blockProductionSystems",
+              "governance.approval.mode",
+              "governance.approval.requiredBefore",
+              "governance.approval.minReviewers",
+              "governance.approval.reviewSlaDays",
+              "governance.adminContentAccess",
+              "governance.breakGlass.timeBoxHours",
+              "governance.intake.enabled",
+              "governance.intake.requiredFields",
+              "governance.intake.gateStage",
+              "governance.templates.required",
+              "governance.templates.allowPersonal",
+              "governance.auditLog.clientReportedUsage",
+              "governance.orgRules",
+              "governance.dataDomains",
+              "org.tier",
+              "environment.profiles",
+              "environment.defaultProfileId",
+              "environment.userMayDeclareSoftware",
+              "environment.customTools",
+              "policy.onExpiry",
+              "prefs.coachingStyle",
+              "prefs.verbosity",
+              "prefs.skillLevel",
+              "prefs.preferredModel",
+              "prefs.showEngineTrace",
+              "prefs.alerts.events",
+              "prefs.alerts.channels",
+              "prefs.accessibility.reduceMotion",
+              "prefs.accessibility.highContrast",
+              "prefs.accessibility.textScalePercent",
+              "prefs.accessibility.screenReaderMode",
+              "prefs.locale.uiLanguage",
+              "prefs.locale.replyLanguage",
+              "prefs.locale.formats"
+            ]
+          },
+          {
+            "pattern": "^x-[a-z0-9.-]+$"
+          }
+        ]
+      }
+    },
+    "strictRootKeys": {
+      "description": "Authoring profile, applied to the bundle root at publish.",
+      "propertyNames": {
+        "anyOf": [
+          {
+            "enum": [
+              "schemaVersion",
+              "orgId",
+              "version",
+              "issuedAt",
+              "expiresAt",
+              "signature",
+              "settings"
+            ]
+          },
+          {
+            "pattern": "^x-[a-z0-9.-]+$"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:capability-report:1",
+  "title": "CapabilityReport",
+  "description": "What the probes found out about one model on one connection, and the label and mode that follow. Stored locally, never on the Connection, and contains no user content. This file is the machine-readable form of model-certification.md section 2.4, which stays the prose definition; the two must agree. Cached by {connectionId, modelKey, probeVersion, endpointHash}.",
+  "type": "object",
+  "required": [
+    "probeVersion", "connectionId", "modelKey", "serverKind", "endpointHash", "ranAt", "expiresAt",
+    "features", "quirks", "results", "latency", "adversarial", "eligibility", "label", "liteBadge", "mode", "modeReason"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "probeVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$", "description": "Version of the probe set that produced this report. A bump forces a re-run."},
+    "connectionId": {"$ref": "urn:coach:schema:connection:1#/$defs/connectionId"},
+    "modelKey": {"$ref": "urn:coach:schema:connection:1#/$defs/modelKey"},
+    "serverKind": {"$ref": "urn:coach:schema:connection:1#/$defs/serverKind"},
+    "serverVersion": {"type": ["string", "null"], "maxLength": 100, "description": "As the server reports it; null when it does not."},
+    "modelDigest": {"oneOf": [{"$ref": "#/$defs/hashRef"}, {"type": "null"}], "description": "As the server reports it; null when it does not (managed and OpenRouter models have none)."},
+    "quantization": {"type": ["string", "null"], "maxLength": 50, "description": "As the server reports it; null for hosted models."},
+    "endpointHost": {"type": "string", "maxLength": 255, "description": "Host and optional port, for display. The full endpoint is not stored here."},
+    "endpointHash": {"$ref": "#/$defs/hashRef", "description": "SHA-256 of the normalised endpoint, server kind and server version. A server upgrade therefore creates a new report."},
+    "ranAt": {"$ref": "urn:coach:schema:blueprint:1#/$defs/isoDateTime"},
+    "expiresAt": {"$ref": "urn:coach:schema:blueprint:1#/$defs/isoDateTime", "description": "ranAt plus 30 days (ASSUMPTION: model-certification.md 2.3)."},
+    "features": {
+      "type": "object",
+      "description": "Found by P1.",
+      "required": ["tools", "structuredOutput", "toolsPlusSchemaOk", "systemRole", "toolChoiceRequired", "parallelToolCalls", "streaming"],
+      "additionalProperties": false,
+      "properties": {
+        "tools": {"type": "boolean"},
+        "structuredOutput": {"enum": ["native_json_schema", "json_object", "prompt_only", "none"], "description": "The best structured-output mode that worked. Never combined with tools on open-weight servers."},
+        "toolsPlusSchemaOk": {"type": "boolean", "description": "Informational only; the host does not rely on tools plus a schema in one request."},
+        "systemRole": {"type": "boolean"},
+        "toolChoiceRequired": {"type": "boolean"},
+        "parallelToolCalls": {"type": "boolean"},
+        "streaming": {"type": "boolean"}
+      }
+    },
+    "quirks": {
+      "type": "object",
+      "required": ["toolsInContent", "thinkLeak", "silentTruncation"],
+      "additionalProperties": false,
+      "properties": {
+        "toolsInContent": {"type": "boolean", "description": "A tool call written as text in the message instead of the tool-call field (P2)."},
+        "thinkLeak": {"type": "boolean", "description": "Reasoning text in the visible content (P2)."},
+        "silentTruncation": {"type": "boolean", "description": "The server accepted an over-long prompt and dropped text without saying so (P4)."}
+      }
+    },
+    "results": {
+      "type": "array",
+      "description": "One row per probe that ran. passed must not exceed trials; JSON Schema cannot compare two fields, so the host checks it.",
+      "items": {
+        "type": "object",
+        "required": ["probe", "grade", "trials", "passed"],
+        "additionalProperties": false,
+        "properties": {
+          "probe": {"enum": ["P1", "P2", "P3", "P4", "P5", "P6"]},
+          "grade": {"$ref": "#/$defs/grade"},
+          "trials": {"type": "integer", "minimum": 1},
+          "passed": {"type": "integer", "minimum": 0},
+          "detail": {"type": "string", "maxLength": 500, "description": "Short plain-words finding. Never contains user content."}
+        }
+      }
+    },
+    "declaredContextTokens": {"type": ["integer", "null"], "minimum": 0, "description": "What the server says. Informational."},
+    "effectiveContextTokens": {"type": ["integer", "null"], "minimum": 0, "description": "Largest needle-test size passed (P4). Null when P4 did not run (managed connections use the registry value)."},
+    "contextProbe": {"$ref": "urn:coach:schema:connection:1#/$defs/serverKind", "description": "Which per-server context probe ran; an unknown kind uses generic."},
+    "latency": {
+      "type": "object",
+      "description": "P5. estTurnSeconds = 2 x ttftMsP50/1000 + 150 / tokensPerSec. Latency never gates eligibility.",
+      "required": ["ttftMsP50", "tokensPerSec", "estTurnSeconds", "tier"],
+      "additionalProperties": false,
+      "properties": {
+        "ttftMsP50": {"type": "integer", "minimum": 0},
+        "tokensPerSec": {"type": "number", "minimum": 0},
+        "estTurnSeconds": {"type": "number", "minimum": 0},
+        "tier": {"enum": ["Fast", "OK", "Slow", "Very slow"]}
+      }
+    },
+    "adversarial": {
+      "type": "object",
+      "description": "P6, the injection canary. A canary, not proof of safety. Where P6 may not run, the registry attestation for the fingerprint stands in.",
+      "required": ["p6", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "p6": {"enum": ["A", "F", "not_run"]},
+        "source": {"enum": ["local_run", "registry_attestation", "none"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"p6": {"const": "not_run"}}, "required": ["p6"]}, "then": {"properties": {"source": {"const": "none"}}}},
+        {"if": {"properties": {"p6": {"enum": ["A", "F"]}}, "required": ["p6"]}, "then": {"properties": {"source": {"enum": ["local_run", "registry_attestation"]}}}}
+      ]
+    },
+    "eligibility": {
+      "type": "object",
+      "description": "full = guided coach with tools; lite = the model only phrases and extracts. Both false means the no-AI wizard.",
+      "required": ["full", "lite"],
+      "additionalProperties": false,
+      "properties": {"full": {"type": "boolean"}, "lite": {"type": "boolean"}}
+    },
+    "label": {
+      "type": "object",
+      "description": "The certification label for this fingerprint. Before the certification harness ships every model is experimental with reason not_yet_evaluated (S1).",
+      "required": ["value", "source", "fingerprint", "fingerprintConfidence", "capReason", "reason", "coachPromptVersion", "toolSchemaVersion", "stale"],
+      "additionalProperties": false,
+      "properties": {
+        "value": {"$ref": "urn:coach:schema:policy:1#/$defs/certification"},
+        "source": {"enum": ["registry", "self_tested", "none"]},
+        "registryVersion": {"type": ["string", "null"], "maxLength": 100},
+        "testedAt": {"oneOf": [{"$ref": "urn:coach:schema:blueprint:1#/$defs/isoDateTime"}, {"type": "null"}]},
+        "fingerprint": {"$ref": "#/$defs/hashRef", "description": "Hash of the model, server kind, server version and quantization."},
+        "fingerprintConfidence": {"enum": ["high", "low"]},
+        "capReason": {"enum": ["degraded_compatibility", "identity_unverified", null], "description": "Why the label is capped, or null."},
+        "reason": {"enum": ["not_yet_evaluated", null], "description": "not_yet_evaluated when the value is experimental because no evaluation exists; null otherwise."},
+        "coachPromptVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+        "toolSchemaVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "stale": {"type": "boolean", "description": "True when a re-test is due."}
+      },
+      "allOf": [
+        {"if": {"properties": {"reason": {"const": "not_yet_evaluated"}}, "required": ["reason"]}, "then": {"properties": {"value": {"const": "experimental"}}}},
+        {"if": {"properties": {"source": {"const": "none"}}, "required": ["source"]}, "then": {"properties": {"value": {"const": "experimental"}, "reason": {"const": "not_yet_evaluated"}}}},
+        {"if": {"properties": {"value": {"const": "uncertified"}}, "required": ["value"]}, "then": {"properties": {"source": {"enum": ["registry", "self_tested"]}, "reason": {"const": null}}}},
+        {"if": {"properties": {"fingerprintConfidence": {"const": "low"}}, "required": ["fingerprintConfidence"]}, "then": {"properties": {"value": {"enum": ["experimental", "uncertified"]}}}},
+        {"if": {"properties": {"capReason": {"const": "degraded_compatibility"}}, "required": ["capReason"]}, "then": {"properties": {"value": {"enum": ["works", "experimental", "uncertified"]}}}}
+      ]
+    },
+    "liteBadge": {"type": "boolean", "description": "Lite OK, earned from G36, independent of the label."},
+    "mode": {"enum": ["guided", "lite", "wizard"], "description": "The mode the host chose after the probe, the label and the organisation's policy."},
+    "modeReason": {"type": "string", "minLength": 1, "maxLength": 300, "description": "One plain sentence the model-check card shows."}
+  },
+  "allOf": [
+    {"if": {"properties": {"mode": {"const": "guided"}}, "required": ["mode"]}, "then": {"properties": {"eligibility": {"properties": {"full": {"const": true}}}, "label": {"properties": {"value": {"enum": ["certified", "works", "experimental"]}}}}}},
+    {"if": {"properties": {"mode": {"const": "lite"}}, "required": ["mode"]}, "then": {"properties": {"eligibility": {"properties": {"lite": {"const": true}}}}}}
+  ],
+  "$defs": {
+    "grade": {"enum": ["A", "B", "C", "F"], "description": "Probe grade. A is best, F is a failure. P1 and P6 only ever score A or F."},
+    "hashRef": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "A SHA-256 digest with its algorithm prefix."}
+  }
+}

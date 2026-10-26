@@ -1,0 +1,1238 @@
+[
+  {
+    "toolId": "eliminate.remove_step",
+    "name": "Remove, merge or source upstream",
+    "rungId": "eliminate",
+    "capabilities": [],
+    "constraints": [
+      "Pseudo-tool: the recommendation is to stop doing the step, merge it into a neighbour, or obtain its output from the system that already holds it.",
+      "Never recommended when the step is required by a control (diagnostic.requiredByControl)."
+    ],
+    "skillLevel": "none",
+    "requiresInstall": false,
+    "platforms": [
+      "windows",
+      "macos",
+      "linux",
+      "cloud"
+    ],
+    "description": "Not a product. Used so that every recommendation has a toolId, including 'do not do this step'.",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "yes",
+    "dataFlow": "local",
+    "handoff": "none",
+    "licence": "unknown",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Engine special case: capabilities are intentionally empty and operation coverage is not checked."
+  },
+  {
+    "toolId": "builtin.excel_formulas",
+    "name": "Excel formulas and functions",
+    "rungId": "builtin_feature",
+    "capabilities": [
+      "calculate",
+      "aggregate_group",
+      "lookup_join",
+      "filter_sort_dedupe",
+      "validate_rules",
+      "format_convert",
+      "transform_text_pattern"
+    ],
+    "constraints": [
+      "Recalculates only while the workbook is open; no scheduling or triggers of its own.",
+      "Worksheet size limit: 1,048,576 rows by 16,384 columns.",
+      "Data must already be in the workbook (no cross-system movement)."
+    ],
+    "skillLevel": "basic",
+    "requiresInstall": false,
+    "platforms": [
+      "windows",
+      "macos",
+      "cloud"
+    ],
+    "description": "Cell formulas, lookups, SUMIFS-style aggregation, text and date functions in a spreadsheet the user already has.",
+    "systemKinds": [
+      "spreadsheet_or_file"
+    ],
+    "accessModes": [
+      "builtin"
+    ],
+    "unattendedSupport": "no",
+    "dataFlow": "local",
+    "handoff": "formula_snippet",
+    "licence": "m365_or_office",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Row limit read from the Microsoft Excel specifications page on 2026-10-25. VERIFY: availability of dynamic-array functions (FILTER, UNIQUE, XLOOKUP) per Excel version in the target org. VERIFY: whether regular-expression worksheet functions exist in the org's Excel build before relying on transform_text_pattern for regex.",
+    "limits": {
+      "maxItemsPerRun": 1048576
+    },
+    "sources": [
+      {
+        "url": "https://support.microsoft.com/en-us/office/excel-specifications-and-limits-1672b34d-7043-467e-8e27-269d656771c3",
+        "accessed": "2026-10-25"
+      }
+    ]
+  },
+  {
+    "toolId": "builtin.excel_power_query",
+    "name": "Excel Power Query (Get and Transform)",
+    "rungId": "builtin_feature",
+    "capabilities": [
+      "transfer_data",
+      "lookup_join",
+      "filter_sort_dedupe",
+      "aggregate_group",
+      "format_convert",
+      "query_database",
+      "scrape_web",
+      "validate_rules"
+    ],
+    "constraints": [
+      "Refresh is user-initiated or on open in desktop Excel; no unattended schedule by itself.",
+      "Web import covers pages that serve their data as HTML tables; no JavaScript rendering.",
+      "Reads data into Excel; it does not write back to source systems."
+    ],
+    "skillLevel": "basic",
+    "requiresInstall": false,
+    "platforms": [
+      "windows",
+      "cloud"
+    ],
+    "description": "Import, clean, merge and reshape data from files, databases and web tables into Excel with a recorded, repeatable query.",
+    "systemKinds": [
+      "spreadsheet_or_file",
+      "database",
+      "web_app",
+      "api_service"
+    ],
+    "accessModes": [
+      "builtin",
+      "file_or_db",
+      "http_html",
+      "connector"
+    ],
+    "unattendedSupport": "no",
+    "dataFlow": "local",
+    "handoff": "config_instructions",
+    "licence": "m365_or_office",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "VERIFY: scheduled refresh requires a hosting service and is not part of desktop Excel. VERIFY: connector list and any licence requirement per data source. VERIFY: Mac Excel feature parity (platform list is conservative)."
+  },
+  {
+    "toolId": "builtin.outlook_rules",
+    "name": "Outlook rules",
+    "rungId": "builtin_feature",
+    "capabilities": [
+      "route_message_by_header",
+      "send_message",
+      "event_trigger"
+    ],
+    "constraints": [
+      "Conditions are header and keyword matches (sender, recipients, subject, body words, category); it cannot extract fields from a message body.",
+      "Actions are mailbox actions (move, categorize, flag, forward, auto-reply and similar).",
+      "Some rules run only while Outlook is running (client-only)."
+    ],
+    "skillLevel": "none",
+    "requiresInstall": false,
+    "platforms": [
+      "windows",
+      "cloud"
+    ],
+    "description": "Mailbox rules that sort, flag, forward or auto-reply to incoming mail.",
+    "systemKinds": [
+      "email_or_calendar"
+    ],
+    "accessModes": [
+      "builtin"
+    ],
+    "unattendedSupport": "needs_host",
+    "dataFlow": "tenant",
+    "handoff": "config_instructions",
+    "licence": "m365_or_office",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "VERIFY: which actions are server-side (Exchange) versus client-only, and the rule limits, for the org's Outlook (classic, new Outlook, Outlook on the web). The Microsoft support page for this topic returned HTTP 404 on 2026-10-25, so nothing here is source-confirmed. dataFlow is an ASSUMPTION: server-side rules run in the org's mail tenant."
+  },
+  {
+    "toolId": "builtin.windows_task_scheduler",
+    "name": "Windows Task Scheduler",
+    "rungId": "builtin_feature",
+    "capabilities": [
+      "schedule_trigger"
+    ],
+    "constraints": [
+      "Runs a program on a time-based or event-based trigger (startup, logon, idle and similar).",
+      "The machine must be on (and, for interactive tasks, the user signed in).",
+      "No built-in trigger for file arrival or new mail; use polling on a schedule."
+    ],
+    "skillLevel": "basic",
+    "requiresInstall": false,
+    "platforms": [
+      "windows"
+    ],
+    "description": "OS scheduler used as the trigger companion for scripts and local automations.",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "yes",
+    "dataFlow": "local",
+    "handoff": "config_instructions",
+    "licence": "included_with_os",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Trigger families read from Microsoft Learn on 2026-10-25. VERIFY: options for running whether or not the user is signed in, and credential storage for such tasks.",
+    "sources": [
+      {
+        "url": "https://learn.microsoft.com/en-us/windows/win32/taskschd/task-triggers",
+        "accessed": "2026-10-25"
+      }
+    ]
+  },
+  {
+    "toolId": "builtin.powertoys_powerrename",
+    "name": "PowerToys PowerRename",
+    "rungId": "builtin_feature",
+    "capabilities": [
+      "rename_files",
+      "transform_text_pattern"
+    ],
+    "constraints": [
+      "Interactive only: launched from the File Explorer context menu; no trigger and no unattended mode.",
+      "Search and replace or regular expressions (ECMAScript grammar; optional Boost) with a preview pane and undo.",
+      "Renames files and folders only."
+    ],
+    "skillLevel": "basic",
+    "requiresInstall": true,
+    "platforms": [
+      "windows"
+    ],
+    "description": "Bulk rename of selected files with search/replace or regex and a live preview.",
+    "systemKinds": [
+      "spreadsheet_or_file"
+    ],
+    "accessModes": [
+      "builtin"
+    ],
+    "unattendedSupport": "no",
+    "dataFlow": "local",
+    "handoff": "config_instructions",
+    "licence": "open_source",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Capabilities read from Microsoft Learn on 2026-10-25. Part of Microsoft PowerToys: it must be installed and the utility enabled. VERIFY: install policy and minimum Windows version in the target org.",
+    "sources": [
+      {
+        "url": "https://learn.microsoft.com/en-us/windows/powertoys/powerrename",
+        "accessed": "2026-10-25"
+      }
+    ]
+  },
+  {
+    "toolId": "api.power_automate_cloud_flow",
+    "name": "Power Automate cloud flow",
+    "rungId": "api_connector",
+    "capabilities": [
+      "transfer_data",
+      "sync_records",
+      "call_api",
+      "send_message",
+      "route_by_rule",
+      "route_message_by_header",
+      "format_convert",
+      "validate_rules",
+      "query_database",
+      "schedule_trigger",
+      "event_trigger"
+    ],
+    "constraints": [
+      "Reaches only systems with a connector or API; local files and desktop apps need a gateway or a desktop flow.",
+      "Limited data shaping (no group-by aggregation of its own).",
+      "Connector licence tier (standard or premium) varies by connector."
+    ],
+    "skillLevel": "basic",
+    "requiresInstall": false,
+    "platforms": [
+      "cloud"
+    ],
+    "description": "Hosted low-code flows with scheduled, automated and instant triggers and prebuilt connectors.",
+    "systemKinds": [
+      "web_app",
+      "api_service",
+      "email_or_calendar",
+      "spreadsheet_or_file",
+      "database"
+    ],
+    "accessModes": [
+      "connector",
+      "api"
+    ],
+    "unattendedSupport": "yes",
+    "dataFlow": "tenant",
+    "handoff": "flow_spec",
+    "licence": "m365_or_power_platform",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "VERIFY: licence tier per connector, including the HTTP and SQL Server connectors (the Microsoft Learn HTTP connector page returned HTTP 404 on 2026-10-25). VERIFY: on-premises data gateway requirement for on-premises sources. VERIFY: whether the AI and Approvals actions are covered by the org's licences. dataFlow tenant is an ASSUMPTION: the flow runs in the org's Microsoft tenant, but third-party connectors send data to those services."
+  },
+  {
+    "toolId": "api.rest_http_request",
+    "name": "REST / HTTP API call",
+    "rungId": "api_connector",
+    "capabilities": [
+      "call_api",
+      "transfer_data",
+      "sync_records"
+    ],
+    "constraints": [
+      "A technique, not a product: it needs a host (script, flow) to run.",
+      "Needs documented endpoints, an auth method that works unattended (API key, service principal, OAuth client credentials), and rate-limit handling."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": false,
+    "platforms": [
+      "windows",
+      "macos",
+      "linux",
+      "cloud"
+    ],
+    "description": "Direct call to a documented web API from a thin client in a host tool.",
+    "systemKinds": [
+      "web_app",
+      "api_service"
+    ],
+    "accessModes": [
+      "api"
+    ],
+    "unattendedSupport": "yes",
+    "dataFlow": "local",
+    "handoff": "script_file",
+    "licence": "n/a",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "VERIFY: licence tier of the HTTP action when hosted in Power Automate. Data flow is that of the host; the engine takes the higher of tool and host.",
+    "hostToolIds": [
+      "script.powershell",
+      "script.python",
+      "api.power_automate_cloud_flow"
+    ]
+  },
+  {
+    "toolId": "api.microsoft_graph",
+    "name": "Microsoft Graph API",
+    "rungId": "api_connector",
+    "capabilities": [
+      "call_api",
+      "transfer_data",
+      "send_message"
+    ],
+    "constraints": [
+      "Covers Microsoft 365 services (Outlook/Exchange, Calendar, Excel, OneDrive, SharePoint, Teams, Planner and others).",
+      "Needs an app registration and admin-consented permissions; unattended use needs application permissions.",
+      "A technique with a host, not a standalone runner."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": false,
+    "platforms": [
+      "windows",
+      "macos",
+      "linux",
+      "cloud"
+    ],
+    "description": "Single REST endpoint for Microsoft 365 data: mail, calendar, files, Teams, Excel workbooks in OneDrive/SharePoint.",
+    "systemKinds": [
+      "email_or_calendar",
+      "spreadsheet_or_file",
+      "web_app",
+      "api_service"
+    ],
+    "accessModes": [
+      "api"
+    ],
+    "unattendedSupport": "yes",
+    "dataFlow": "tenant",
+    "handoff": "script_file",
+    "licence": "m365",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Service coverage read from the Microsoft Graph overview on 2026-10-25. VERIFY: permission model and consent process for application (unattended) access in the org. VERIFY: change-notification (webhook) support before relying on it as event_trigger; it is deliberately not listed.",
+    "hostToolIds": [
+      "script.powershell",
+      "script.python"
+    ],
+    "sources": [
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/overview",
+        "accessed": "2026-10-25"
+      }
+    ]
+  },
+  {
+    "toolId": "api.third_party_ipaas",
+    "name": "Third-party integration platform (iPaaS)",
+    "rungId": "api_connector",
+    "capabilities": [
+      "transfer_data",
+      "sync_records",
+      "send_message",
+      "route_by_rule",
+      "route_message_by_header",
+      "call_api",
+      "format_convert",
+      "schedule_trigger",
+      "event_trigger"
+    ],
+    "constraints": [
+      "Category entry for hosted no-code integration services; data passes through the vendor's cloud.",
+      "Coverage, task limits and data residency differ by vendor."
+    ],
+    "skillLevel": "basic",
+    "requiresInstall": false,
+    "platforms": [
+      "cloud"
+    ],
+    "description": "Hosted no-code connector platforms that move records between SaaS tools on triggers or schedules.",
+    "systemKinds": [
+      "web_app",
+      "api_service",
+      "email_or_calendar",
+      "spreadsheet_or_file"
+    ],
+    "accessModes": [
+      "connector",
+      "api"
+    ],
+    "unattendedSupport": "yes",
+    "dataFlow": "vendor_cloud",
+    "handoff": "flow_spec",
+    "licence": "commercial",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "VERIFY per vendor: connector coverage, limits, DPA and data residency. No vendor is named on purpose; the org's approved platform should be added as an org tool."
+  },
+  {
+    "toolId": "script.powershell",
+    "name": "PowerShell script",
+    "rungId": "script",
+    "capabilities": [
+      "calculate",
+      "aggregate_group",
+      "lookup_join",
+      "filter_sort_dedupe",
+      "validate_rules",
+      "format_convert",
+      "transform_text_pattern",
+      "query_database",
+      "file_operations",
+      "rename_files",
+      "transfer_data",
+      "sync_records",
+      "call_api",
+      "scrape_web",
+      "send_message",
+      "generate_report",
+      "route_by_rule",
+      "route_message_by_header"
+    ],
+    "constraints": [
+      "Runs under the org's execution policy; when none is set the effective policy on Windows clients is Restricted, and Group Policy can override it.",
+      "Execution policy is defense in depth, not a security boundary.",
+      "Needs a trigger companion (Task Scheduler) for unattended runs.",
+      "Constrained Language Mode, WDAC or AppLocker can block scripts."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": false,
+    "platforms": [
+      "windows"
+    ],
+    "description": "Scripts for file work, text and data shaping, database and API calls, and Outlook/Excel automation through their object models.",
+    "systemKinds": [
+      "spreadsheet_or_file",
+      "email_or_calendar",
+      "database",
+      "web_app",
+      "api_service"
+    ],
+    "accessModes": [
+      "api",
+      "scriptable",
+      "file_or_db",
+      "http_html"
+    ],
+    "unattendedSupport": "yes",
+    "dataFlow": "local",
+    "handoff": "script_file",
+    "licence": "included_with_os",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Execution-policy facts read from Microsoft Learn on 2026-10-25. VERIFY: PowerShell version available on the target machines (Windows PowerShell versus PowerShell 7). VERIFY: org script-signing and language-mode restrictions (the environment profile has fields for these).",
+    "language": "powershell",
+    "sources": [
+      {
+        "url": "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies",
+        "accessed": "2026-10-25"
+      }
+    ]
+  },
+  {
+    "toolId": "script.python",
+    "name": "Python script",
+    "rungId": "script",
+    "capabilities": [
+      "calculate",
+      "aggregate_group",
+      "lookup_join",
+      "filter_sort_dedupe",
+      "validate_rules",
+      "format_convert",
+      "transform_text_pattern",
+      "query_database",
+      "file_operations",
+      "rename_files",
+      "transfer_data",
+      "sync_records",
+      "call_api",
+      "scrape_web",
+      "send_message",
+      "generate_report",
+      "route_by_rule",
+      "route_message_by_header"
+    ],
+    "constraints": [
+      "Needs an interpreter and, usually, third-party libraries; each library is a supply-chain review item.",
+      "Needs a trigger companion for unattended runs.",
+      "Static-HTML scraping only; JavaScript-rendered pages need a browser tool."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": true,
+    "platforms": [
+      "windows",
+      "macos",
+      "linux"
+    ],
+    "description": "General scripting with a large library ecosystem for data work and API calls.",
+    "systemKinds": [
+      "spreadsheet_or_file",
+      "email_or_calendar",
+      "database",
+      "web_app",
+      "api_service"
+    ],
+    "accessModes": [
+      "api",
+      "scriptable",
+      "file_or_db",
+      "http_html"
+    ],
+    "unattendedSupport": "yes",
+    "dataFlow": "local",
+    "handoff": "script_file",
+    "licence": "open_source",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "VERIFY: Python is not assumed to be preinstalled on managed Windows; confirm install policy and approved package sources.",
+    "language": "python"
+  },
+  {
+    "toolId": "script.vba_macro",
+    "name": "VBA macro (Office)",
+    "rungId": "script",
+    "capabilities": [
+      "calculate",
+      "aggregate_group",
+      "lookup_join",
+      "filter_sort_dedupe",
+      "validate_rules",
+      "format_convert",
+      "transform_text_pattern",
+      "generate_report",
+      "send_message",
+      "route_by_rule",
+      "route_message_by_header"
+    ],
+    "constraints": [
+      "Lives inside one Office file and acts on Office objects (workbook, mailbox), not on arbitrary folders; runs in a desktop Office session; macros in files from the internet are blocked by default in Office on Windows.",
+      "Unattended use depends on a signed-in desktop session; it is not a server runtime."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": false,
+    "platforms": [
+      "windows",
+      "macos"
+    ],
+    "description": "Macros that automate Excel, Word and Outlook through their object models.",
+    "systemKinds": [
+      "spreadsheet_or_file",
+      "email_or_calendar"
+    ],
+    "accessModes": [
+      "scriptable"
+    ],
+    "unattendedSupport": "needs_host",
+    "dataFlow": "local",
+    "handoff": "script_file",
+    "licence": "m365_or_office",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Macro blocking behavior read from Microsoft Learn on 2026-10-25 (applies to Office on Windows). VERIFY: Microsoft's support position on unattended Office automation. VERIFY: signing and Trusted Location policy in the org.",
+    "language": "vba",
+    "sources": [
+      {
+        "url": "https://learn.microsoft.com/en-us/microsoft-365-apps/security/internet-macros-blocked",
+        "accessed": "2026-10-25"
+      }
+    ]
+  },
+  {
+    "toolId": "script.office_scripts",
+    "name": "Office Scripts (Excel)",
+    "rungId": "script",
+    "capabilities": [
+      "calculate",
+      "aggregate_group",
+      "lookup_join",
+      "filter_sort_dedupe",
+      "validate_rules",
+      "format_convert",
+      "transform_text_pattern",
+      "generate_report"
+    ],
+    "constraints": [
+      "Acts on Excel workbooks stored in OneDrive/SharePoint; unattended runs go through Power Automate.",
+      "Its own scheduling was documented as temporarily disabled; use a Power Automate flow."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": false,
+    "platforms": [
+      "cloud"
+    ],
+    "description": "Recorded or hand-written scripts that automate Excel workbooks in the Microsoft 365 cloud.",
+    "systemKinds": [
+      "spreadsheet_or_file"
+    ],
+    "accessModes": [
+      "scriptable"
+    ],
+    "unattendedSupport": "yes",
+    "dataFlow": "tenant",
+    "handoff": "script_file",
+    "licence": "m365",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Description read from Microsoft Learn on 2026-10-25. VERIFY: licence and tenant-admin enablement requirements. Unattended execution needs a Power Automate flow, which the engine does not add automatically (add it as a companion in design).",
+    "language": "javascript",
+    "sources": [
+      {
+        "url": "https://learn.microsoft.com/en-us/office/dev/scripts/overview/excel",
+        "accessed": "2026-10-25"
+      }
+    ]
+  },
+  {
+    "toolId": "script.sql",
+    "name": "SQL query or stored procedure",
+    "rungId": "script",
+    "capabilities": [
+      "query_database",
+      "aggregate_group",
+      "lookup_join",
+      "filter_sort_dedupe",
+      "calculate",
+      "validate_rules",
+      "format_convert",
+      "generate_report"
+    ],
+    "constraints": [
+      "Runs inside one database engine; moving data to other systems needs another tool.",
+      "Scheduling comes from the database's own job scheduler."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": false,
+    "platforms": [
+      "windows",
+      "linux",
+      "cloud"
+    ],
+    "description": "Set-based data selection, aggregation and validation executed where the data lives.",
+    "systemKinds": [
+      "database"
+    ],
+    "accessModes": [
+      "file_or_db"
+    ],
+    "unattendedSupport": "yes",
+    "dataFlow": "local",
+    "handoff": "script_file",
+    "licence": "n/a",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "VERIFY: scheduling mechanism and permissions for the org's database engine; SQL dialect varies by engine.",
+    "language": "sql"
+  },
+  {
+    "toolId": "ui.automate",
+    "name": "AutoMate (UI automation)",
+    "rungId": "ui_automation",
+    "capabilities": [
+      "read_from_ui",
+      "write_to_ui",
+      "transfer_data"
+    ],
+    "constraints": [
+      "Windows desktop UI automation with AutomationId-based selectors; no screen coordinates and no confidence scoring; an unresolved element fails the run loudly.",
+      "Local-only and deterministic; no AI at runtime, so it cannot host an llm_node.",
+      "Needs an unlocked interactive Windows session for unattended runs."
+    ],
+    "skillLevel": "basic",
+    "requiresInstall": true,
+    "platforms": [
+      "windows"
+    ],
+    "description": "Owner's WinUI 3 / C# desktop automation tool; first automation target of Coach.",
+    "systemKinds": [
+      "desktop_app",
+      "terminal_or_mainframe"
+    ],
+    "accessModes": [
+      "ui"
+    ],
+    "unattendedSupport": "needs_host",
+    "dataFlow": "local",
+    "handoff": "native_in_automate",
+    "licence": "commercial",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Per the shared contract (decision 1). ASSUMPTION: capabilities are limited to read_from_ui, write_to_ui and transfer_data through the UI. VERIFY with the AutoMate owner: file and clipboard actions, browser-hosted UI support, unattended runner model, installer prerequisites. Because browser content rarely exposes stable AutomationIds, web apps are deliberately not listed in systemKinds.",
+    "locatorKinds": [
+      "automation_id",
+      "name_or_control_type"
+    ]
+  },
+  {
+    "toolId": "ui.power_automate_desktop",
+    "name": "Power Automate for desktop",
+    "rungId": "ui_automation",
+    "capabilities": [
+      "read_from_ui",
+      "write_to_ui",
+      "transfer_data",
+      "scrape_web",
+      "file_operations",
+      "rename_files",
+      "transform_text_pattern",
+      "send_message"
+    ],
+    "constraints": [
+      "Automates legacy and modern desktop apps, web apps, Excel and folders using UI elements, images or coordinates; the engine accepts only UI-element and DOM locators and ignores image and coordinate targeting.",
+      "Unattended runs need the Power Automate Process plan and a machine with all users signed out; elevated privileges are not supported."
+    ],
+    "skillLevel": "basic",
+    "requiresInstall": true,
+    "platforms": [
+      "windows"
+    ],
+    "description": "Microsoft desktop RPA tool for UI-driven automation of desktop and web applications.",
+    "systemKinds": [
+      "desktop_app",
+      "terminal_or_mainframe",
+      "web_app",
+      "spreadsheet_or_file"
+    ],
+    "accessModes": [
+      "ui"
+    ],
+    "unattendedSupport": "needs_host",
+    "dataFlow": "tenant",
+    "handoff": "flow_spec",
+    "licence": "m365_or_power_platform",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Unattended requirements and locator families read from Microsoft Learn on 2026-10-25. VERIFY: whether the app is preinstalled on the target Windows build and which sign-in account tier the org uses. dataFlow tenant is an ASSUMPTION: flows are managed through the Microsoft cloud even when they run locally.",
+    "locatorKinds": [
+      "automation_id",
+      "name_or_control_type",
+      "dom_selector",
+      "image_or_coordinates"
+    ],
+    "sources": [
+      {
+        "url": "https://learn.microsoft.com/en-us/power-automate/desktop-flows/run-unattended-desktop-flows",
+        "accessed": "2026-10-25"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/power-automate/desktop-flows/introduction",
+        "accessed": "2026-10-25"
+      }
+    ]
+  },
+  {
+    "toolId": "ui.playwright_browser",
+    "name": "Playwright browser automation",
+    "rungId": "ui_automation",
+    "capabilities": [
+      "read_from_ui",
+      "write_to_ui",
+      "scrape_web",
+      "transfer_data"
+    ],
+    "constraints": [
+      "Browser-only, DOM-selector based; needs code.",
+      "Check the site's terms and robots rules before scraping (see C-LEGAL-CHECK).",
+      "Login with interactive MFA cannot run unattended."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": true,
+    "platforms": [
+      "windows",
+      "macos",
+      "linux"
+    ],
+    "description": "Code-driven browser automation with auto-waiting and headless mode, for JavaScript-rendered sites and web apps with no API.",
+    "systemKinds": [
+      "web_app"
+    ],
+    "accessModes": [
+      "ui"
+    ],
+    "unattendedSupport": "yes",
+    "dataFlow": "local",
+    "handoff": "script_file",
+    "licence": "open_source",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "VERIFY: currently supported languages and browser versions; confirm the org allows installing browser binaries.",
+    "locatorKinds": [
+      "dom_selector"
+    ]
+  },
+  {
+    "toolId": "parser.regex_template",
+    "name": "Regex / template field extraction",
+    "rungId": "parser_ocr_ml",
+    "capabilities": [
+      "extract_fields_pattern",
+      "transform_text_pattern"
+    ],
+    "constraints": [
+      "Technique run inside a host tool. Works only on text that is already machine-readable (text layer, HTML, plain text) with a stable layout.",
+      "Each new layout needs a new template."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": false,
+    "platforms": [
+      "windows",
+      "macos",
+      "linux"
+    ],
+    "description": "Fixed-layout field extraction with regular expressions or zone templates.",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "yes",
+    "dataFlow": "local",
+    "handoff": "script_file",
+    "licence": "unknown",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "VERIFY: that the org's Power Automate for desktop build exposes regex text parsing before using it as a host.",
+    "hostToolIds": [
+      "script.powershell",
+      "script.python",
+      "ui.power_automate_desktop"
+    ],
+    "maxInputVariability": "few_templates"
+  },
+  {
+    "toolId": "ocr.tesseract_local",
+    "name": "Tesseract OCR (local)",
+    "rungId": "parser_ocr_ml",
+    "capabilities": [
+      "ocr_text"
+    ],
+    "constraints": [
+      "Returns text only; field extraction is a separate step.",
+      "Accuracy depends on scan quality; handwriting is unreliable."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": true,
+    "platforms": [
+      "windows",
+      "macos",
+      "linux"
+    ],
+    "description": "Open-source OCR engine that runs locally, so document images never leave the machine.",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "yes",
+    "dataFlow": "local",
+    "handoff": "script_file",
+    "licence": "open_source",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "VERIFY: current version, licence and language-pack availability. Chosen as the local-only OCR option for restricted data.",
+    "hostToolIds": [
+      "script.powershell",
+      "script.python"
+    ],
+    "maxInputVariability": "unbounded"
+  },
+  {
+    "toolId": "ml.document_intelligence_prebuilt",
+    "name": "Document extraction service (prebuilt models)",
+    "rungId": "parser_ocr_ml",
+    "capabilities": [
+      "ocr_text",
+      "extract_fields_document"
+    ],
+    "constraints": [
+      "Cloud API; documents are sent to the service in the org's cloud subscription.",
+      "Prebuilt models cover common document types (for example invoices, receipts, identity documents); other layouts need a custom-trained model.",
+      "Returns per-field confidence values at run time; thresholds are workflow design parameters, not engine inputs."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": false,
+    "platforms": [
+      "cloud"
+    ],
+    "description": "Managed OCR and field-extraction service with prebuilt models; product name per Microsoft docs is Azure Document Intelligence in Foundry Tools.",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "yes",
+    "dataFlow": "tenant",
+    "handoff": "flow_spec",
+    "licence": "commercial",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Name and prebuilt model list (invoice, receipt, ID) read from Microsoft Learn on 2026-10-25. VERIFY: data residency options, any disconnected/container option, API version, pricing. dataFlow tenant is an ASSUMPTION about the org's own subscription. An equivalent org-approved service can be added as an org tool.",
+    "hostToolIds": [
+      "script.powershell",
+      "script.python",
+      "api.power_automate_cloud_flow"
+    ],
+    "maxInputVariability": "many_templates",
+    "sources": [
+      {
+        "url": "https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/overview",
+        "accessed": "2026-10-25"
+      }
+    ]
+  },
+  {
+    "toolId": "ml.trained_text_classifier",
+    "name": "Trained text classifier",
+    "rungId": "parser_ocr_ml",
+    "capabilities": [
+      "classify_text"
+    ],
+    "constraints": [
+      "Needs labeled examples (the engine's minimum is per class) and a stable label set; retraining is needed when labels drift.",
+      "Produces a label from a closed set; no free-text output."
+    ],
+    "skillLevel": "advanced",
+    "requiresInstall": true,
+    "platforms": [
+      "windows",
+      "macos",
+      "linux"
+    ],
+    "description": "Supervised classifier trained on the org's own labeled examples, run locally (for example a classical model in Python).",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "yes",
+    "dataFlow": "local",
+    "handoff": "script_file",
+    "licence": "unknown",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Generic entry; a managed custom-classification service is an alternative and should be added as an org tool. VERIFY: org policy on training models with business data.",
+    "hostToolIds": [
+      "script.python"
+    ],
+    "requiresTrainingData": true,
+    "maxInputVariability": "unbounded"
+  },
+  {
+    "toolId": "llm.cloud_model",
+    "name": "LLM node: cloud model",
+    "rungId": "llm_node",
+    "capabilities": [
+      "classify_text",
+      "extract_entities_freetext",
+      "summarize_text",
+      "generate_text",
+      "translate_text",
+      "answer_over_text",
+      "judge_quality",
+      "extract_fields_document"
+    ],
+    "constraints": [
+      "Non-deterministic; every output needs a validator and a fallback (justification card).",
+      "Data leaves the org to a model provider (managed gateway or the user's own key).",
+      "Cannot run inside AutoMate (no AI at runtime): host it in a script or flow."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": false,
+    "platforms": [
+      "cloud"
+    ],
+    "description": "Hosted language model called from a workflow for classification, extraction from prose, summarizing and drafting.",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "yes",
+    "dataFlow": "ai_cloud",
+    "handoff": "spec_only",
+    "licence": "unknown",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Maps to connection types managed, byok_openrouter and byok_provider. VERIFY: provider zero-retention options per route. Context limits depend on the chosen model; maxInputSize large is an ASSUMPTION.",
+    "hostToolIds": [
+      "script.powershell",
+      "script.python",
+      "api.power_automate_cloud_flow"
+    ],
+    "limits": {
+      "maxInputSize": "large"
+    },
+    "connectionTypes": [
+      "managed",
+      "byok_openrouter",
+      "byok_provider"
+    ]
+  },
+  {
+    "toolId": "llm.org_endpoint",
+    "name": "LLM node: org-hosted endpoint",
+    "rungId": "llm_node",
+    "capabilities": [
+      "classify_text",
+      "extract_entities_freetext",
+      "summarize_text",
+      "generate_text",
+      "translate_text",
+      "answer_over_text",
+      "judge_quality",
+      "extract_fields_document"
+    ],
+    "constraints": [
+      "Non-deterministic; justification card required.",
+      "Requires an org-provisioned OpenAI-compatible endpoint (for example a private cloud deployment, gateway or vLLM server).",
+      "Cannot run inside AutoMate: host it in a script or flow."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": false,
+    "platforms": [
+      "cloud"
+    ],
+    "description": "Language model served from an endpoint the organization controls.",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "yes",
+    "dataFlow": "tenant",
+    "handoff": "spec_only",
+    "licence": "unknown",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Maps to connection type custom_openai_compat. dataFlow tenant and maxInputSize large are ASSUMPTIONS that depend on how the org deploys the endpoint; the policy layer should override them per endpoint.",
+    "hostToolIds": [
+      "script.powershell",
+      "script.python",
+      "api.power_automate_cloud_flow"
+    ],
+    "limits": {
+      "maxInputSize": "large"
+    },
+    "connectionTypes": [
+      "custom_openai_compat"
+    ]
+  },
+  {
+    "toolId": "llm.local_model",
+    "name": "LLM node: local model",
+    "rungId": "llm_node",
+    "capabilities": [
+      "classify_text",
+      "extract_entities_freetext",
+      "summarize_text",
+      "generate_text",
+      "translate_text",
+      "extract_fields_document"
+    ],
+    "constraints": [
+      "Non-deterministic; justification card required.",
+      "Runs on a localhost OpenAI-compatible server; quality and context size depend on the machine and the model.",
+      "Cannot run inside AutoMate: host it in a script or flow."
+    ],
+    "skillLevel": "intermediate",
+    "requiresInstall": true,
+    "platforms": [
+      "windows",
+      "macos",
+      "linux"
+    ],
+    "description": "Small or mid-size model on the user's own machine, so content never leaves the device.",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "needs_host",
+    "dataFlow": "local",
+    "handoff": "spec_only",
+    "licence": "unknown",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Maps to connection type local. ASSUMPTION: answer_over_text and judge_quality are left out and maxInputSize is medium because small local models are weaker at long-context reasoning; the capability probe and the golden-set certification should refine this per model.",
+    "hostToolIds": [
+      "script.powershell",
+      "script.python"
+    ],
+    "limits": {
+      "maxInputSize": "medium"
+    },
+    "connectionTypes": [
+      "local"
+    ]
+  },
+  {
+    "toolId": "agent.bounded_llm_agent",
+    "name": "LLM agent (bounded tool use)",
+    "rungId": "llm_agent",
+    "capabilities": [
+      "plan_open_ended",
+      "classify_text",
+      "extract_entities_freetext",
+      "summarize_text",
+      "generate_text",
+      "translate_text",
+      "answer_over_text",
+      "judge_quality"
+    ],
+    "constraints": [
+      "Discouraged: path is chosen by the model at run time, so behaviour is not reproducible.",
+      "Requires an allowlist of tools, a step cap, a spend cap per run, supervised (attended) use, and a human checkpoint or halt as fallback."
+    ],
+    "skillLevel": "advanced",
+    "requiresInstall": true,
+    "platforms": [
+      "cloud"
+    ],
+    "description": "Model that plans and calls an allowlisted set of tools in a loop, for tasks whose path cannot be written down.",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "no",
+    "dataFlow": "ai_cloud",
+    "handoff": "spec_only",
+    "licence": "unknown",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Policy keys coach.llmAgent.mode and coach.llmOverride.mode govern use. The engine never picks this rung unless the open_ended path predicate holds.",
+    "hostToolIds": [
+      "script.python"
+    ],
+    "limits": {
+      "maxInputSize": "large"
+    },
+    "connectionTypes": [
+      "managed",
+      "byok_openrouter",
+      "byok_provider",
+      "custom_openai_compat"
+    ]
+  },
+  {
+    "toolId": "human.approval_flow",
+    "name": "Approval request (flow or Teams)",
+    "rungId": "human_checkpoint",
+    "capabilities": [
+      "approve_decision"
+    ],
+    "constraints": [
+      "A named approver decides; the run waits for the answer.",
+      "Needs an approver mapping (who approves what) and a timeout/escalation rule."
+    ],
+    "skillLevel": "basic",
+    "requiresInstall": false,
+    "platforms": [
+      "cloud"
+    ],
+    "description": "Structured approve/reject request sent to a named person, with an audit trail.",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "yes",
+    "dataFlow": "tenant",
+    "handoff": "flow_spec",
+    "licence": "unknown",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "VERIFY: which approval features the org's Microsoft 365 / Power Automate licences include."
+  },
+  {
+    "toolId": "human.review_queue",
+    "name": "Manual review queue",
+    "rungId": "human_checkpoint",
+    "capabilities": [
+      "exception_review"
+    ],
+    "constraints": [
+      "A person works through flagged items from a queue (list, shared mailbox or task board).",
+      "Needs an owner, a service level and a rule for what happens when the queue is not worked."
+    ],
+    "skillLevel": "none",
+    "requiresInstall": false,
+    "platforms": [
+      "windows",
+      "macos",
+      "linux",
+      "cloud"
+    ],
+    "description": "Queue where items that failed a validator or matched an exception wait for a person.",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "yes",
+    "dataFlow": "local",
+    "handoff": "config_instructions",
+    "licence": "unknown",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "ASSUMPTION: dataFlow local means the tool adds no processing beyond the system the org uses for the queue; if the queue lives in a cloud service, the org should model it as an org tool with the right dataFlow."
+  },
+  {
+    "toolId": "human.manual_task",
+    "name": "Manual task with checklist",
+    "rungId": "human_checkpoint",
+    "capabilities": [
+      "physical_action",
+      "exception_review",
+      "plan_open_ended",
+      "classify_text",
+      "extract_entities_freetext",
+      "summarize_text",
+      "generate_text",
+      "translate_text",
+      "answer_over_text",
+      "judge_quality",
+      "extract_fields_document"
+    ],
+    "constraints": [
+      "A person does the step by hand from a checklist: paper, phone calls, physical handling, or work whose path cannot be written down in advance.",
+      "Not for volume: the engine allows an open-ended manual step only up to humanMaxItemsPerRun items per run (default 50, ASSUMPTION; an org can change it).",
+      "Because a person is the worker, no system kind is excluded; the step's systems are used by hand."
+    ],
+    "skillLevel": "none",
+    "requiresInstall": false,
+    "platforms": [
+      "windows",
+      "macos",
+      "linux",
+      "cloud"
+    ],
+    "description": "Checklist for a person-performed step. Also the manual fallback the engine returns when a rule-based step is blocked, and the home of open-ended work that is not safe or allowed for an agent.",
+    "systemKinds": [],
+    "accessModes": [],
+    "unattendedSupport": "no",
+    "dataFlow": "local",
+    "handoff": "config_instructions",
+    "licence": "unknown",
+    "entryVersion": 1,
+    "lastVerified": "2026-10-25",
+    "notes": "Contract v2 puts human_checkpoint before llm_agent, so a person is the default home of open-ended work and the agent is reached only where a person is forbidden or does not fit. ASSUMPTION: the volume limit that decides 'does not fit' is a placeholder constant (DEFAULT_CFG.humanMaxItemsPerRun)."
+  }
+]

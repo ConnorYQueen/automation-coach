@@ -1,0 +1,717 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:connection:1",
+  "title": "Coach connection",
+  "description": "The Connection entity of design/00-shared-contract.md v2 section 5. A connection is a configured route to a model: the built-in managed gateway, a BYOK key (direct from the client), a custom OpenAI-compatible server, or a loopback local server. credentialRef is a local reference to Credential Manager/DPAPI, never the secret; the secret never appears in a Connection, a log, a transcript, a Blueprint, an export or a policy bundle. Policy orgConnection (policy.schema.json) is this shape without credentialRef, generated from the same builder. Writers emit schema properties only; readers preserve unknown properties of a newer minor.",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "label",
+    "serverKind",
+    "authScheme",
+    "credentialMode"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/connectionId"
+    },
+    "type": {
+      "$ref": "#/$defs/connectionType"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60
+    },
+    "providerId": {
+      "allOf": [
+        {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{1,62}$"
+        },
+        {
+          "not": {
+            "enum": [
+              "local",
+              "custom",
+              "openrouter",
+              "managed"
+            ]
+          }
+        }
+      ],
+      "description": "byok_provider only: the <providerId> namespace of its model keys. ASSUMPTION: an additive field beyond the contract's list, because the namespace cannot be derived otherwise."
+    },
+    "endpoint": {
+      "type": "string",
+      "maxLength": 300,
+      "description": "https. Plain http only for a loopback local endpoint. Required for local and custom_openai_compat; optional for the others (the serverKind default applies)."
+    },
+    "serverKind": {
+      "$ref": "#/$defs/serverKind"
+    },
+    "authScheme": {
+      "$ref": "#/$defs/authScheme"
+    },
+    "credentialMode": {
+      "$ref": "#/$defs/credentialMode"
+    },
+    "credentialRef": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/credentialRef"
+        }
+      ],
+      "description": "Local reference to the stored credential. Filled by the client after credential setup."
+    },
+    "extraHeaders": {
+      "$ref": "#/$defs/extraHeaders"
+    },
+    "modelIdKind": {
+      "$ref": "#/$defs/modelIdKind"
+    },
+    "contextWindowOverride": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1024,
+      "maximum": 10000000,
+      "description": "Tokens. Overrides the probed context window; null = use the probe. The probe is per server kind (Ollama defaults small)."
+    },
+    "allowedModels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/modelKeyGlob"
+      },
+      "uniqueItems": true,
+      "maxItems": 500,
+      "description": "Namespaced model keys or globs this connection may use. Omitted = whatever the endpoint lists, still subject to models.allowlist and models.denylist."
+    },
+    "policyRef": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/connectionId"
+        }
+      ],
+      "description": "The policy orgConnection.id this connection was provisioned from; null for a personal connection."
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "local"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "endpoint"
+        ],
+        "properties": {
+          "endpoint": {
+            "$ref": "#/$defs/loopbackEndpoint"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "custom_openai_compat"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "endpoint"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": [
+              "managed",
+              "byok_openrouter",
+              "byok_provider",
+              "custom_openai_compat"
+            ]
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "endpoint": {
+            "$ref": "#/$defs/httpsEndpoint"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "local"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "serverKind": {
+            "enum": [
+              "ollama",
+              "lmstudio",
+              "foundry_local",
+              "llamacpp",
+              "generic"
+            ]
+          },
+          "authScheme": {
+            "enum": [
+              "none",
+              "bearer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "managed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "serverKind": {
+            "enum": [
+              "openrouter",
+              "generic"
+            ]
+          },
+          "authScheme": {
+            "const": "token_provider"
+          },
+          "credentialMode": {
+            "const": "integrated_oauth"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "byok_openrouter"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "serverKind": {
+            "const": "openrouter"
+          },
+          "credentialMode": {
+            "enum": [
+              "user_supplied",
+              "org_vault"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "byok_provider"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "providerId"
+        ],
+        "properties": {
+          "serverKind": {
+            "enum": [
+              "openai",
+              "anthropic_compat",
+              "vertex_openai",
+              "bedrock",
+              "generic"
+            ]
+          },
+          "credentialMode": {
+            "enum": [
+              "user_supplied",
+              "org_vault"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "local"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "allowedModels": {
+            "items": {
+              "pattern": "^local/"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "custom_openai_compat"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "allowedModels": {
+            "items": {
+              "pattern": "^custom/"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": [
+              "managed",
+              "byok_openrouter"
+            ]
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "allowedModels": {
+            "items": {
+              "not": {
+                "pattern": "^(local|custom)/"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "byok_provider"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "allowedModels": {
+            "items": {
+              "not": {
+                "pattern": "^(local|custom|openrouter)/"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": [
+              "managed",
+              "byok_openrouter",
+              "custom_openai_compat",
+              "local"
+            ]
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "providerId"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "serverKind": {
+            "const": "azure_openai"
+          }
+        },
+        "required": [
+          "serverKind"
+        ]
+      },
+      "then": {
+        "required": [
+          "modelIdKind"
+        ],
+        "properties": {
+          "modelIdKind": {
+            "const": "deployment"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "credentialMode": {
+            "const": "none"
+          }
+        },
+        "required": [
+          "credentialMode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "authScheme": {
+            "const": "none"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "authScheme": {
+            "const": "none"
+          }
+        },
+        "required": [
+          "authScheme"
+        ]
+      },
+      "then": {
+        "properties": {
+          "credentialMode": {
+            "const": "none"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "credentialMode": {
+            "const": "integrated_oauth"
+          }
+        },
+        "required": [
+          "credentialMode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "authScheme": {
+            "const": "token_provider"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "authScheme": {
+            "const": "token_provider"
+          }
+        },
+        "required": [
+          "authScheme"
+        ]
+      },
+      "then": {
+        "properties": {
+          "credentialMode": {
+            "const": "integrated_oauth"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "credentialMode": {
+            "enum": [
+              "user_supplied",
+              "org_vault"
+            ]
+          }
+        },
+        "required": [
+          "credentialMode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "authScheme": {
+            "enum": [
+              "bearer",
+              "api_key_header"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "credentialMode": {
+            "enum": [
+              "none",
+              "integrated_oauth"
+            ]
+          }
+        },
+        "required": [
+          "credentialMode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "credentialRef": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "credentialMode": {
+            "const": "org_vault"
+          }
+        },
+        "required": [
+          "credentialMode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "credentialRef": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "pattern": "^orgvault:"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "credentialMode": {
+            "const": "user_supplied"
+          }
+        },
+        "required": [
+          "credentialMode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "credentialRef": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "pattern": "^(wincred|dpapi):"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "connectionId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+      "description": "Connection id. The built-in managed connection is 'managed'. One definition shared with policy.schema.json (contract v2 section 4)."
+    },
+    "connectionType": {
+      "enum": [
+        "managed",
+        "byok_openrouter",
+        "byok_provider",
+        "custom_openai_compat",
+        "local"
+      ]
+    },
+    "serverKind": {
+      "enum": [
+        "ollama",
+        "lmstudio",
+        "foundry_local",
+        "llamacpp",
+        "vllm",
+        "litellm",
+        "azure_openai",
+        "bedrock",
+        "vertex_openai",
+        "anthropic_compat",
+        "openai",
+        "openrouter",
+        "generic"
+      ],
+      "description": "Selects the wire quirks profile (context probe, tools handling, auth header name). ASSUMPTION: the header name for authScheme api_key_header is 'api-key' for azure_openai and 'x-api-key' otherwise; it is derived from serverKind, not stored."
+    },
+    "authScheme": {
+      "enum": [
+        "none",
+        "bearer",
+        "api_key_header",
+        "token_provider"
+      ],
+      "description": "none; bearer (Authorization: Bearer); api_key_header; token_provider (the client obtains a token for the endpoint through the signed-in identity, no stored key)."
+    },
+    "credentialMode": {
+      "enum": [
+        "user_supplied",
+        "integrated_oauth",
+        "org_vault",
+        "none"
+      ],
+      "description": "user_supplied: the user's key in Credential Manager/DPAPI. integrated_oauth: token through the signed-in identity. org_vault: key leased from the org vault (Enterprise, P2). none: no credential."
+    },
+    "modelIdKind": {
+      "enum": [
+        "model",
+        "deployment"
+      ],
+      "description": "model: the id is a model name. deployment: the id is a deployment name (Azure OpenAI)."
+    },
+    "modelKey": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}/[A-Za-z0-9][A-Za-z0-9._:@+~/-]{0,127}$",
+      "maxLength": 200,
+      "description": "Namespaced model key <namespace>/<id>. managed and byok_openrouter use the OpenRouter id as is; byok_provider <providerId>/<id>; custom_openai_compat custom/<id> (deployment name for Azure); local local/<id>. One convention for Connection.allowedModels[], models.allowlist and prefs.preferredModel.modelId (contract v2 section 4)."
+    },
+    "modelKeyGlob": {
+      "type": "string",
+      "pattern": "^[a-z0-9*][a-z0-9._*-]{0,63}/[A-Za-z0-9*][A-Za-z0-9._:@+~*/-]{0,127}$",
+      "maxLength": 200,
+      "description": "A model key where '*' matches any run of characters. Same namespaces as modelKey."
+    },
+    "httpsEndpoint": {
+      "type": "string",
+      "pattern": "^https://[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(:[0-9]{1,5})?(/[^\\s]*)?$",
+      "maxLength": 300,
+      "description": "https URL without user info."
+    },
+    "loopbackEndpoint": {
+      "type": "string",
+      "pattern": "^https?://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]{1,5})?(/[^\\s]*)?$",
+      "maxLength": 300,
+      "description": "http or https on localhost, 127.0.0.1 or [::1] only. Plain http is allowed only here."
+    },
+    "credentialRef": {
+      "type": "string",
+      "pattern": "^(wincred|dpapi|orgvault):[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$",
+      "maxLength": 200,
+      "description": "Local reference to a credential store entry (wincred, dpapi or orgvault), never the secret. ASSUMPTION: the prefix format is this schema's choice; other documents treat it as opaque."
+    },
+    "extraHeaders": {
+      "type": "object",
+      "maxProperties": 20,
+      "propertyNames": {
+        "allOf": [
+          {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,63}$"
+          },
+          {
+            "not": {
+              "pattern": "([Aa][Uu][Tt][Hh]|[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww]|[Cc][Oo][Oo][Kk][Ii][Ee]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee])"
+            }
+          }
+        ]
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 256,
+        "pattern": "^[\\x20-\\x7E]*$",
+        "not": {
+          "pattern": "^([Bb][Ee][Aa][Rr][Ee][Rr]|[Bb][Aa][Ss][Ii][Cc]) "
+        }
+      },
+      "description": "Non-secret request headers (for example OpenRouter attribution or an API version). Header names that contain auth, key, token, secret, passw, cookie, credential or signature are refused, and so are values that start with Bearer or Basic: a credential never goes here."
+    }
+  }
+}

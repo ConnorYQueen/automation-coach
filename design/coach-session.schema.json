@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:coach-session:1",
+  "title": "Coach SessionState and lite extraction results",
+  "description": "The coach's local session state (coach-spec.md section 8.1) and the JSON a lite model returns for a free-text question (section 9). Machine-readable form of those two sections, which stay the prose definition. SessionState is local and rebuildable from the auditLog plus the transcript; it is never synced or exported. The root is SessionState; LiteExtract is reached as #/$defs/liteExtract.",
+  "$ref": "#/$defs/sessionState",
+  "$defs": {
+    "sessionId": {
+      "type": "string",
+      "description": "Prefixed ULID, ses_<26 chars>, like the Blueprint ids. Owner-confirmed 2026-10-26.",
+      "pattern": "^ses_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "turnId": {"type": "string", "pattern": "^t[0-9]+$", "description": "Transcript turn, t1, t2 and so on."},
+    "docId": {"type": "string", "pattern": "^d[0-9]+$"},
+    "questionId": {
+      "type": "string",
+      "pattern": "^Q-(BLD|CAP|CLS|DEC|DEP|DSG|ENV|RSC|TRI|TST)-[0-9]{2}[a-z]?$",
+      "description": "A question-bank id, for example Q-CLS-04 or Q-CLS-02a."
+    },
+    "subjectId": {
+      "description": "What a question is about: a step, an exception, or the Blueprint itself (process-level questions).",
+      "anyOf": [
+        {"$ref": "urn:coach:schema:blueprint:1#/$defs/stepId"},
+        {"$ref": "urn:coach:schema:blueprint:1#/$defs/exceptionId"},
+        {"$ref": "urn:coach:schema:blueprint:1#/$defs/blueprintId"}
+      ]
+    },
+    "answerOutcome": {
+      "enum": ["answered", "ambiguous", "off_topic", "declined", "unknown", "skipped"],
+      "description": "How an asked question ended. The first five match LiteExtract.status; skipped is a question the user passed over (bank field skippable). Owner-confirmed 2026-10-26."
+    },
+    "mode": {"enum": ["guided", "lite", "wizard"]},
+    "sessionState": {
+      "type": "object",
+      "required": ["sessionId", "blueprintId", "mode", "stage", "askedQuestions", "narrativeCount", "untrustedDocs", "pendingApprovals", "prefs"],
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": {"$ref": "#/$defs/sessionId"},
+        "blueprintId": {"$ref": "urn:coach:schema:blueprint:1#/$defs/blueprintId"},
+        "mode": {"$ref": "#/$defs/mode"},
+        "stage": {"$ref": "urn:coach:schema:blueprint:1#/$defs/stage"},
+        "askedQuestions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["questionId", "subjectId", "turnId", "outcome"],
+            "additionalProperties": false,
+            "properties": {
+              "questionId": {"$ref": "#/$defs/questionId"},
+              "subjectId": {"$ref": "#/$defs/subjectId"},
+              "turnId": {"$ref": "#/$defs/turnId"},
+              "outcome": {"$ref": "#/$defs/answerOutcome"}
+            }
+          }
+        },
+        "openQuestion": {
+          "type": "object",
+          "description": "The question waiting for an answer. Absent when none is open.",
+          "required": ["questionId", "subjectId"],
+          "additionalProperties": false,
+          "properties": {
+            "questionId": {"$ref": "#/$defs/questionId"},
+            "subjectId": {"$ref": "#/$defs/subjectId"}
+          }
+        },
+        "narrativeCount": {"type": "integer", "minimum": 0, "description": "Walk-through narratives captured so far (gate CAP-2 targets three)."},
+        "untrustedDocs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["docId", "name", "flagged", "state"],
+            "additionalProperties": false,
+            "properties": {
+              "docId": {"$ref": "#/$defs/docId"},
+              "name": {"type": "string", "minLength": 1, "maxLength": 255},
+              "flagged": {"type": "boolean", "description": "The injection scanner found a signal. Flagging does not change processing."},
+              "state": {"enum": ["pending", "extracted", "failed", "removed"], "description": "Owner-confirmed 2026-10-26."}
+            }
+          }
+        },
+        "pendingApprovals": {
+          "type": "array",
+          "description": "Approval gates the user is waiting on. The item shape is the minimum the digest line needs. Owner-confirmed 2026-10-26.",
+          "items": {
+            "type": "object",
+            "required": ["gate", "subjectId", "requestedAt"],
+            "additionalProperties": false,
+            "properties": {
+              "gate": {"$ref": "urn:coach:schema:policy:1#/$defs/gate"},
+              "subjectId": {"$ref": "#/$defs/subjectId"},
+              "requestedAt": {"$ref": "urn:coach:schema:blueprint:1#/$defs/isoDateTime"}
+            }
+          }
+        },
+        "lastModel": {
+          "type": "object",
+          "description": "The model that answered the last turn. Absent until the first model call (never present in a wizard-only session).",
+          "required": ["connectionId", "modelKey", "fingerprint", "probeGrade", "label"],
+          "additionalProperties": false,
+          "properties": {
+            "connectionId": {"$ref": "urn:coach:schema:connection:1#/$defs/connectionId"},
+            "modelKey": {"$ref": "urn:coach:schema:connection:1#/$defs/modelKey", "description": "The same value as CapabilityReport.modelKey and the audit details modelKey (renamed from modelId, 2026-10-26)."},
+            "fingerprint": {"$ref": "urn:coach:schema:capability-report:1#/$defs/hashRef"},
+            "probeGrade": {"$ref": "urn:coach:schema:capability-report:1#/$defs/grade", "description": "The lowest grade among P1 to P4 at the last probe. Owner-confirmed 2026-10-26."},
+            "label": {"$ref": "urn:coach:schema:policy:1#/$defs/certification"}
+          }
+        },
+        "prefs": {
+          "type": "object",
+          "required": ["teachLevel", "pace", "locale"],
+          "additionalProperties": false,
+          "properties": {
+            "teachLevel": {"enum": ["full", "brief", "off"], "description": "off is 'skip the explanations'. Owner-confirmed 2026-10-26."},
+            "pace": {"enum": ["normal", "quick"], "description": "Owner-confirmed 2026-10-26."},
+            "locale": {"type": "string", "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$", "description": "BCP 47 language tag, for example en or pt-BR."}
+          }
+        }
+      }
+    },
+    "extractStatus": {
+      "enum": ["answered", "ambiguous", "off_topic", "declined", "unknown"],
+      "description": "Ambiguity is a status; there is no numeric confidence."
+    },
+    "extractQuote": {"type": "string", "minLength": 1, "maxLength": 300, "description": "A verbatim substring of the user's message. The host checks the substring rule; a schema cannot."},
+    "followUp": {"type": ["string", "null"], "maxLength": 200, "description": "At most 20 words; the host counts them. Null unless status is ambiguous."},
+    "extractAnswer": {
+      "type": "object",
+      "description": "One free-text answer: a number, a short text or a system name. Closed questions, tags and typed fields are never extracted.",
+      "required": ["questionId", "status", "followUp"],
+      "additionalProperties": false,
+      "properties": {
+        "questionId": {"$ref": "#/$defs/questionId"},
+        "status": {"$ref": "#/$defs/extractStatus"},
+        "value": {"type": ["number", "string", "null"], "maxLength": 200},
+        "quote": {"oneOf": [{"$ref": "#/$defs/extractQuote"}, {"type": "null"}]},
+        "followUp": {"$ref": "#/$defs/followUp"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "answered"}}, "required": ["status"]},
+          "then": {"required": ["value", "quote"], "properties": {"value": {"anyOf": [{"type": "number"}, {"type": "string", "minLength": 1}]}, "quote": {"type": "string"}, "followUp": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "ambiguous"}}, "required": ["status"]},
+          "then": {"properties": {"followUp": {"type": "string", "minLength": 1}}}
+        },
+        {
+          "if": {"properties": {"status": {"enum": ["off_topic", "declined", "unknown"]}}, "required": ["status"]},
+          "then": {"properties": {"value": {"type": "null"}, "quote": {"type": "null"}, "followUp": {"type": "null"}}}
+        }
+      ]
+    },
+    "extractedStep": {
+      "type": "object",
+      "required": ["name", "quote"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 120},
+        "description": {"type": "string", "maxLength": 1000},
+        "actor": {"type": "string", "maxLength": 120},
+        "inputs": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 200}},
+        "outputs": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 200}},
+        "quote": {"$ref": "#/$defs/extractQuote"}
+      }
+    },
+    "extractStepList": {
+      "type": "object",
+      "description": "Steps from a narrative or a pasted SOP (chunked at 1,500 tokens, merged and de-duplicated by the host). Everything is proposed, never confirmed.",
+      "required": ["questionId", "status", "steps", "followUp"],
+      "additionalProperties": false,
+      "properties": {
+        "questionId": {"$ref": "#/$defs/questionId"},
+        "status": {"$ref": "#/$defs/extractStatus"},
+        "steps": {"type": "array", "items": {"$ref": "#/$defs/extractedStep"}},
+        "followUp": {"$ref": "#/$defs/followUp"}
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "answered"}}, "required": ["status"]}, "then": {"properties": {"steps": {"minItems": 1}, "followUp": {"type": "null"}}}},
+        {"if": {"properties": {"status": {"const": "ambiguous"}}, "required": ["status"]}, "then": {"properties": {"followUp": {"type": "string", "minLength": 1}}}},
+        {"if": {"properties": {"status": {"enum": ["off_topic", "declined", "unknown"]}}, "required": ["status"]}, "then": {"properties": {"steps": {"maxItems": 0}, "followUp": {"type": "null"}}}}
+      ]
+    },
+    "extractedException": {
+      "type": "object",
+      "required": ["description", "quote"],
+      "additionalProperties": false,
+      "properties": {
+        "description": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "handling": {"type": ["string", "null"], "maxLength": 1000, "description": "Null when the user did not say how it is handled."},
+        "stepHint": {"type": "string", "maxLength": 200, "description": "Free text. The host asks the user to pick the step from a list; it never resolves the hint itself."},
+        "quote": {"$ref": "#/$defs/extractQuote"}
+      }
+    },
+    "extractExceptionList": {
+      "type": "object",
+      "required": ["questionId", "status", "exceptions", "followUp"],
+      "additionalProperties": false,
+      "properties": {
+        "questionId": {"$ref": "#/$defs/questionId"},
+        "status": {"$ref": "#/$defs/extractStatus"},
+        "exceptions": {"type": "array", "items": {"$ref": "#/$defs/extractedException"}},
+        "followUp": {"$ref": "#/$defs/followUp"}
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "answered"}}, "required": ["status"]}, "then": {"properties": {"exceptions": {"minItems": 1}, "followUp": {"type": "null"}}}},
+        {"if": {"properties": {"status": {"const": "ambiguous"}}, "required": ["status"]}, "then": {"properties": {"followUp": {"type": "string", "minLength": 1}}}},
+        {"if": {"properties": {"status": {"enum": ["off_topic", "declined", "unknown"]}}, "required": ["status"]}, "then": {"properties": {"exceptions": {"maxItems": 0}, "followUp": {"type": "null"}}}}
+      ]
+    },
+    "liteExtract": {
+      "description": "LiteExtract: what a lite model returns for one free-text question. The three shapes are told apart by their payload field (value, steps or exceptions). Used by probe P3 and by golden scenario G36.",
+      "oneOf": [
+        {"$ref": "#/$defs/extractAnswer"},
+        {"$ref": "#/$defs/extractStepList"},
+        {"$ref": "#/$defs/extractExceptionList"}
+      ]
+    }
+  }
+}
