@@ -5,10 +5,10 @@ metadata:
   node_type: memory
   type: project
   originSessionId: a11be073-c407-4a6d-ba66-ef5202e1339d
-  modified: 2026-10-26T20:13:09.842Z
+  modified: 2026-10-26T20:25:51.023Z
 ---
 
-Coach (working name) walks employees through deciding whether and how to automate a process and picks the right tool per step, so they stop over-using LLMs. Brainstormed 2026-10-25; design files were written to `design/` and `research/` in a session scratch folder (deleted with the session unless moved).
+Coach (working name) walks employees through deciding whether and how to automate a process and picks the right tool per step, so they stop over-using LLMs. Brainstormed 2026-10-25. The full design set is saved in the private GitHub repo `ConnorYQueen/automation-coach` (pushed 2026-10-26; local clone at `D:/claude/automation-coach`). Start from its `README.md`, which lists status, open owner decisions and how to run the validators; this file is also copied there as `handoff/automation-coach-product-decisions.md`.
 
 Owner-locked decisions:
 - Thesis: the model talks, a deterministic rules engine decides; no LLM in the recommendation path. The engine is a pure function over a step diagnostic, with a full trace. Ladder: eliminate, builtin_feature, api_connector, script, ui_automation, parser_ocr_ml, llm_node, human_checkpoint, llm_agent (discouraged).
